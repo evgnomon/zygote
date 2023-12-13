@@ -8,7 +8,7 @@ go install .
 
 cd examples/example-project-js
 
-zygote run -z mysql:[VM1,VM2,VM3] -z app:[VM4] # Run app on a clustered mysql instance on port 80
+zygote add -z mysql:[VM1,VM2,VM3] -z app:[VM4] # Run app on a clustered mysql instance on port 80
 zygote stop # Stop everything
 zygote restart # Rest everything
 zygote restart -z mysql:[VM1] # Rest VM1 while the cluster is operating
