@@ -1,7 +1,7 @@
 # Zygote: Cloud Functions Runtime for Factories without Human!
 
 ## Introduction
-Zygote is a robust runtime designed for developing web applications in an AI-centric environment. It offers a flexible platform for applications with various interfaces like web browsers, VR, voice interactions, and chat. Its key advantage is the ability to function seamlessly on diverse machines – from major cloud providers to personal laptops, perfect for a world where AI plays a pivotal role.
+Zygote is a runtime useful for writing functions (aka making apps). Functions using Zygote just integrate and run in the cloud. There is just one covenant driving everything in Zygote "No human is let in the factory". The source must be available both inside the factory and on my laptop to keep the covenant forever. As no human is let in the factory, there is no connection between the factory and my laptop except when I want to change the code running the factory. So there could be more than one factory running the code, and my laptop is a the first place the next change to the factory happens inside, so it is a full function independent factory alone which there is no human is inside (as I am not inside my laptop). Zygote is distributed under HGL General License.
 
 ## Core Features
 - **AI-Focused Applications**: Ideal for creating apps that leverage AI technology, offering APIs and human-readable interfaces.
