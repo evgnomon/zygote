@@ -18,7 +18,7 @@ zygote replace -z mysql:[VM1]:[VM6] # Replace VM1 with VM6 for mysql cluster so 
 zygote add -z redis:[VM7,VM8,VM9] # Add a new redis instance to the running cluster
 zygote rename -z redis:redis-1 # Rename redis to redis-1 keeping everything else
 zygote add -z redis-2:[VM10,VM11,VM12] # Add a new redis shard to the running cluster
-zygore fork -e stage # Fork everything to the stage environment (from the default env.) VM1-stage, VM2-stage would be machine names.
+zygote fork -e stage # Fork everything to the stage environment (from the default env.) VM1-stage, VM2-stage would be machine names.
 zygote switch -e stage # commands afterward target stage
 zygote fork -e prod # create prod environment
 zygote switch -e prod # switch to prod
