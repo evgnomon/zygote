@@ -1,4 +1,4 @@
-# Zygote: Optimal Runtime for AI-Driven Web Applications
+# Zygote: A nice runtime for Cloud functions for "the Abandoned World"!
 
 ## Introduction
 Zygote is a robust runtime designed for developing web applications in an AI-centric environment. It offers a flexible platform for applications with various interfaces like web browsers, VR, voice interactions, and chat. Its key advantage is the ability to function seamlessly on diverse machines – from major cloud providers to personal laptops, perfect for a world where AI plays a pivotal role.
