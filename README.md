@@ -27,4 +27,4 @@ zygote switch -e prod # switch to prod
 zygote mount -z app --url www.example.app:80/myapp
 zygote forget # Bye, nothing exists now!
 ```
-Which runs the app on VM4 together with MySQL on VM1..3. The VMs are defined in ~/.ssh/config and it could be anywhere.
+VMs are defined in ~/.ssh/config
