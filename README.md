@@ -1,6 +1,8 @@
 # Zygote: Cloud Functions Runtime for Factories without Human!
 Zygote is a handy runtime for developing cloud functions guided by the principle "No human is let in the factory". The function code gets seamlessly integrated using Zygote CI/CD which is offered as a service and could be added to your Github repo as an Application. This ensures you can get a function up and running "without entering the factory". Zygote tool and the runtime is freely available under HGL License and could be quickly setup locally on your machine supporting Linux, macOS and Windows (Both native and WSL2).
 
+Zygote has bultin support for MySQL as the default database and Redis as in-memory store and pub/sub which makes it self sufficient to create the first function without knowing the details.
+
 ## Quick Start Guide
 ```bash
 git clone git@github.com:evgnomon/zygote.git
