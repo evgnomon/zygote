@@ -3,7 +3,7 @@ Zygote is a handy runtime for developing cloud functions guided by the principle
 
 Zygote has bultin support for MySQL InnoDB cluster as the default database and sharded Redis cluster as in-memory store and message stream which makes it self sufficient out of the box to quickly create the first scaleable HTTP function which both works locally, in the cloud and on-prem so gives the choice to you choosing the factory without entering it.
 
-> In a world where "no human is let in the factory", machine is nothing than a domain name exposing a REST API (or a nice UI) with some subscribers.
+> In a world where "no human is let in the factory", machine is nothing than a domain name exposing a REST API (or a nice UI) with some paying subscribers. And eventually there would be no job left except sending pull requests to a repository, it is just a matter of time to reach there!
 
 ## Quick Start Guide
 ```bash
