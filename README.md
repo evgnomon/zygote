@@ -1,5 +1,5 @@
 # Zygote: Cloud Functions Runtime for Factories without Human!
-> In a world where "no human is let in the factory", machine is nothing than a domain name exposing a REST API (or a nice UI) with some paying subscribers. And eventually there would be no job left except sending pull requests to code repositories to modify that everything digital world, it is just a matter of time!
+> In a world where "no human is let in the factory", machine is nothing than a domain name exposing a REST API (or a nice UI) with some paying subscribers. And eventually there would be no job left except sending pull requests to code repositories to modify that everything digital world! It is just a matter of time. And the only thing we can do is to secure the way to escape out the factory now!
 
 > Hamed Ghasemzadeh 2023
 
