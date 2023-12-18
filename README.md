@@ -2,7 +2,7 @@
 
 > In a world where "no human is let in the factory", machine is nothing than a domain name exposing a REST API (or equivalently a nice UI perhaps an AI voice) with having me as a paying subscriber. And eventually there would be no job left except integrating the next block of code to some code repository which is the only gateway to modify that digital world. There is only 44 minutes left. Fortunately, The only thing I can hopefully do is to secure the way out in a most efficient and accurate way for my family to escape out the factory when "no human is let in the factory" anymore! My idea is to build a digital spaceship to secure the way out and share it with you so you can also secure the way out for your family! So let's build for "no human is let in the factory" before our kids are left over.
 
-> Hamed Ghasemzadeh 2023
+> Hamed Ghasemzadeh 2023 - For my family
 
 Zygote is a handy runtime for developing cloud functions guided by the principle "No human is let in the factory". The function code gets seamlessly integrated using Zygote CI/CD which is offered as a service and could be added to your Github repo as an Application. This ensures you can get a function up and running "without entering the factory". Zygote tool and the runtime is freely available under HGL License and could be quickly setup locally on your machine supporting Linux, macOS and Windows (Both native and WSL2).
 
