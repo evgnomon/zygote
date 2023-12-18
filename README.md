@@ -1,5 +1,6 @@
 # Zygote: Cloud Functions Runtime for Factories without Human!
-> In a world where "no human is let in the factory", machine is nothing than a domain name exposing a REST API (or a nice UI) with some paying subscribers. And eventually there would be no job left except sending pull requests to code repositories to modify that everything digital world! It is just a matter of time. And the only thing we can do is to secure the way to escape out when time arrives!
+
+> In a world where "no human is let in the factory", machine is nothing than a domain name exposing a REST API (or equivalently a nice UI perhaps an AI voice) with having me as a paying subscriber. And eventually there would be no job left except creating the next integrateable block of code to some code repository which will be the only gateway left to modify that digital world it happens in the next 44 minutes. And the only thing left relevant for us to do is to secure the way out in a most efficient and flexible way for my family to escape out the factory when "no human is let in the factory" anymore! My idea is to build a digital spaceship to secure the way out and share it with you so you can also secure your way out together with me and my family! So let's take the control of "no human is let in the factory" before the machine takes it's control for you!
 
 > Hamed Ghasemzadeh 2023
 
