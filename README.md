@@ -6,7 +6,7 @@
 
 Zygote is an integrated runtime for developing cloud functions guided by the principle "No human is let in the factory". Zygote building blocks are open sourced under HGL license for free to the extend which you can develop and test a cloud function on your local machine offline (which we call it personal lab). The function code gets seamlessly integrated using Zygote .Run (Zygote dot Run) CI/CD and serverless cloud which is offered as a service and could be added to your Github repo as an Application. This ensures you can get a function up and running "without entering the factory". Zygote tool and the runtime is freely available under HGL License and could be quickly setup locally on your machine supporting Linux, macOS and Windows (Both native and WSL2).
 
-Zygote .Run subscription only accepts Bitcoin (Lightning) as payment method simply because we assume there is no Zygote .Run user unless they already have some Bitcoin secured (isn't it?). So Bitcoin is both money and the stock for Zygote!
+Zygote .Run subscription only accepts Bitcoin (Lightning) as payment method simply because we assume there is no Zygote .Run user unless they already have some Bitcoin secured (isn't it?). So Bitcoin is both money and the security for Zygote!
 
 Zygote has bultin support for MySQL InnoDB cluster as the default database and sharded Redis cluster as in-memory store and messaging service which makes it self sufficient out of the box to quickly create the first scaleable HTTP function which both works locally, in the cloud and on-prem so gives the choice to you choosing the factory without entering it (and also helps us to not get stuck into our own factory).
 
