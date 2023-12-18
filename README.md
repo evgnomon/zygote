@@ -4,7 +4,7 @@
 
 > Hamed Ghasemzadeh 2023
 
-Zygote is a handy runtime for developing cloud functions guided by the principle "No human is let in the factory". The function code gets seamlessly integrated using Zygote CI/CD which is offered as a service and could be added to your Github repo as an Application. This ensures you can get a function up and running "without entering the factory". Zygote tool and the runtime is freely available under HGL License and could be quickly setup locally on your machine supporting Linux, macOS and Windows (Both native and WSL2).
+Zygote is an integrated runtime for developing cloud functions guided by the principle "No human is let in the factory" which leaves building blocks open sourced. The function code gets seamlessly integrated using Zygote.run CI/CD and serverless cloud which is offered as a service and could be added to your Github repo as an Application. This ensures you can get a function up and running "without entering the factory". Zygote tool and the runtime is freely available under HGL License and could be quickly setup locally on your machine supporting Linux, macOS and Windows (Both native and WSL2).
 
 Zygote has bultin support for MySQL InnoDB cluster as the default database and sharded Redis cluster as in-memory store and messaging service which makes it self sufficient out of the box to quickly create the first scaleable HTTP function which both works locally, in the cloud and on-prem so gives the choice to you choosing the factory without entering it.
 
