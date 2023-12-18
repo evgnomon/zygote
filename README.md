@@ -1,9 +1,11 @@
 # Zygote: Cloud Functions Runtime for Factories without Human!
+> In a world where "no human is let in the factory", machine is nothing than a domain name exposing a REST API (or a nice UI) with some paying subscribers. And eventually there would be no job left except sending pull requests to code repositories to modify the world wide machine WWM, it is just a matter of time!
+
 Zygote is a handy runtime for developing cloud functions guided by the principle "No human is let in the factory". The function code gets seamlessly integrated using Zygote CI/CD which is offered as a service and could be added to your Github repo as an Application. This ensures you can get a function up and running "without entering the factory". Zygote tool and the runtime is freely available under HGL License and could be quickly setup locally on your machine supporting Linux, macOS and Windows (Both native and WSL2).
 
 Zygote has bultin support for MySQL InnoDB cluster as the default database and sharded Redis cluster as in-memory store and message stream which makes it self sufficient out of the box to quickly create the first scaleable HTTP function which both works locally, in the cloud and on-prem so gives the choice to you choosing the factory without entering it.
 
-> In a world where "no human is let in the factory", machine is nothing than a domain name exposing a REST API (or a nice UI) with some paying subscribers. And eventually there would be no job left except sending pull requests to code repositories to modify the world wide machine, it is just a matter of time to reach there!
+You can seamlessly integrate functions by subscribing to Clusterlean serverless cloud offering, leveraging open-source/free databases and additional open services. This setup allows for offline development with full access to building blocks, offering the flexibility to modify the source code of these components if needed. Additionally, our architecture supports transitioning away from our serverless cloud, enabling you to host these services on your own platform if desired. Thus, the serverless cloud subscription is a booster to provide a progressive experience, beginning with local development and offering the option to migrate to your own data center, should you choose to move away from our serverless solutions.
 
 ## Quick Start Guide
 ```bash
