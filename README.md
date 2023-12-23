@@ -1,4 +1,7 @@
 # Zygote: Cloud Function Runtime for Factories without Human!
+<p align="center">
+<img src="docs/assets/Zygote.svg" width="256" height="256">
+</p>
 
 > In a world where "no human is let in the factory", machine is a domain name for IO through a system interface. I subscribe to that machine to get accelerated which gives acceleration to the machine too. In the end, there would be no other place left for me except my personal lab! and there is only 44 minutes left! In a digital world there can be only one main branch of code eventually integrating everything which always points to the latest working code block. And a digital username and one speaking under that digital username with human cells based on zygote so we know which block of code we trust to branch out and what is included in the next block of code upon integration with the ledger of everything. Yes, This is the only direction left and that is why it is the final stage of time.
 
