@@ -1,20 +1,18 @@
-# Zygote: Cloud Function Runtime for Factories without Human!
-
 <p align="center">
 <img src="docs/assets/Zygote.svg" width="256" height="256">
 </p>
+<p align="center"> Zygote </p>
+<p align="center"> A Function Runtime for Factories without Human </p>
 
-> In a world where "no human is let in the factory", machine is a domain name for IO through a system interface. I subscribe to that machine to get accelerated which gives acceleration to the machine too. In the end, there would be no other place left for me except my personal lab! Just 44 minutes is left!
 
-> evgnomon Dec 2023
+> Machine is a name. An IO domain. Secure the exit right now as "no human is let in the factory" in 44 minutes. That factory prints everything including itself.
 
-Zygote is an integrated runtime for developing cloud functions guided by the principle "No human is let in the factory". Zygote building blocks are open sourced under HGL license for free to the extend which you can develop and test a cloud function on your local machine offline (which we call it personal lab). The function code gets seamlessly integrated using Zygote .Run (Zygote dot Run) CI/CD and serverless cloud which is offered as a service and could be added to your Github repo as an Application. This ensures you can get a function up and running "without entering the factory". Zygote tool and the runtime is freely available under HGL License and could be quickly setup locally on your machine supporting Linux, macOS and Windows (Both native and WSL2).
+> Dec 2023
 
-Zygote .Run subscription only accepts Bitcoin (Lightning) as payment method simply because we assume there is no Zygote .Run user unless they already have some Bitcoin secured (isn't it?). So Bitcoin is both money and the security for Zygote!
+Subscribe to Zygote .Run and run your cloud function in there. Otherwise fork everything and run it on your own machines.
+Guess you have all the codes to be able to run a fork. We protect our private keys. Not sure if we need to keep you behind any other gate.
 
-Zygote has bultin support for MySQL InnoDB cluster as the default database and sharded Redis cluster as in-memory store and messaging service which makes it self sufficient out of the box to quickly create the first scaleable HTTP function which both works locally, in the cloud and on-prem so gives the choice to you choosing the factory without entering it (and also helps us to not get stuck into our own factory).
-
-You can seamlessly integrate functions by subscribing to Zygote .Run serverless cloud offering, leveraging integrated open-source/free databases and additional open services up and running at scale. This setup allows for offline development with open access to building blocks (licensed under HGL, GPL etc). Additionally, our architecture supports transitioning away from our serverless cloud, enabling you to host these services on your own platform if desired. Thus, the serverless cloud subscription is a booster to provide a progressive experience, beginning with local development and offering the option to migrate to your own data center, should you choose to move away from our serverless solutions when "no human is let in the factory" anymore.
+Linux, macOS and Windows (Both native and WSL2) are supported for local development. But we just support Debian Linux in the server. Bultin support for MySQL InnoDB cluster as the general purpose database and a sharded Redis cluster as in-memory store and message bus. Just plug commodity machines and start using!
 
 ## Quick Start Guide
 ```bash
