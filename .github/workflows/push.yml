@@ -1,0 +1,23 @@
+name: Build and Test
+
+on:
+  push:
+    branches:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/evgnomon/ark:main
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+    - name: Run tests
+      run: go test ./...
+    - name: Build binary
+      run: |
+        go build -buildvcs=false ./cmd/zygote
