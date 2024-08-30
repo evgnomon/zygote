@@ -1,23 +1,14 @@
 name: Main
 
 on:
-  workflow_call:
+  push:
 
 jobs:
   main:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 1
-        repository: evgnomon/zygote
-        path: .zygote
-        sparse-checkout: |
-          playbooks
-
     - name: Run Playbook
       uses: evgnomon/yacht@main
       with:
-        playbook: '.zygote/playbooks/main.yaml'
+        playbook: 'playbooks/main.yaml'
