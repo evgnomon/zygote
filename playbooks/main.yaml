@@ -3,7 +3,7 @@
   hosts: localhost
   gather_facts: false
   tasks:
-    - debug:
-        msg: "Hello from main.yaml"
-  tags:
-    - always
+    - name: "Run check.sh"
+      shell: . playbooks/files/check.sh
+      args:
+        chdir: "{{ lookup('env', 'PWD') }}"

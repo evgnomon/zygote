@@ -8,18 +8,12 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/evgnomon/ark:main
     steps:
-    - name: Check out code
-      uses: actions/checkout@v4
-
-    - name: Run tests
-      run: go test ./...
-    
-    - name: Build binary
-      run: |
-        go build -buildvcs=false -o clapp ./cmd/zygote
+    - uses: actions/checkout@v4
+    - name: Run Playbook
+      uses: evgnomon/yacht@main
+      with:
+        playbook: 'playbooks/main.yaml'
     
     - name: Create Release
       env:
