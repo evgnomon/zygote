@@ -1,0 +1,22 @@
+name: Release Binary
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run Playbook
+      uses: evgnomon/yacht@main
+      with:
+        playbook: 'playbooks/main.yaml'
+    
+    - name: Create Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release create ${{ github.ref }} zygote --title "Release ${{ github.ref }}" --notes "Release ${{ github.ref }}" --target ${{ github.sha }}
