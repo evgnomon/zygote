@@ -7,7 +7,7 @@ require (
 	github.com/docker/go-connections v0.4.0
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang-migrate/migrate/v4 v4.17.1
-	github.com/stretchr/testify v1.8.4
+	github.com/stretchr/testify v1.9.0
 	github.com/urfave/cli/v2 v2.25.7
 	go.uber.org/zap v1.26.0
 )
