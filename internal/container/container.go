@@ -258,13 +258,6 @@ func Ark(script string) {
 	portMapping := map[string]string{}
 	networkName := AppNetworkName()
 
-	// Log potential errors
-	defer func() {
-		if r := recover(); r != nil {
-			log.Println("Error occurred:", r)
-		}
-	}()
-
 	SpawnWithInput(imageName, command, portMapping, nil, networkName, scriptWithExit)
 }
 
@@ -283,15 +276,9 @@ func Ark(script string) {
 // The Docker image used is ghcr.io/evgnomon/ark:main.
 func Vol(srcContent, targetVolume, targetDir, targetFile, networkName string) {
 	imageName := "ghcr.io/evgnomon/ark:main"
+	Pull(context.Background(), imageName)
 	command := []string{"bash", "-c", fmt.Sprintf("tee %s/%s", targetDir, targetFile)}
 	portMapping := make(map[string]string)
-
-	// Log potential errors
-	defer func() {
-		if r := recover(); r != nil {
-			log.Println("Error occurred:", r)
-		}
-	}()
 
 	volMap := map[string]string{
 		targetVolume: targetDir,
@@ -433,6 +420,42 @@ type DockerConfig struct {
 	Auths map[string]registry.AuthConfig `json:"auths"`
 }
 
+func GetAuthString(image string) string {
+	// Read Docker config
+	usr, err := user.Current()
+	if err != nil {
+		panic(err)
+	}
+	dockerConfigPath := usr.HomeDir + "/.docker/config.json"
+	file, err := os.ReadFile(dockerConfigPath)
+	if err != nil {
+		return ""
+	}
+	var dockerConfig DockerConfig
+	err = json.Unmarshal(file, &dockerConfig)
+	if err != nil {
+		return ""
+	}
+
+	firstSlash := strings.Index(image, "/")
+	authConfigKey := "https://index.docker.io/v1/"
+	if firstSlash != -1 {
+		authConfigKey = image[:firstSlash]
+	}
+	authConfig, exists := dockerConfig.Auths[authConfigKey]
+	if !exists {
+		return ""
+	}
+
+	// Pull image
+	encodedJSON, err := json.Marshal(authConfig)
+	if err != nil {
+		panic(err)
+	}
+	authStr := string(encodedJSON)
+	return authStr
+}
+
 func Pull(ctx context.Context, image string) {
 	if !strings.Contains(image, ":") {
 		image += ":latest"
@@ -457,39 +480,7 @@ func Pull(ctx context.Context, image string) {
 		}
 	}
 
-	// Read Docker config
-	usr, err := user.Current()
-	if err != nil {
-		panic(err)
-	}
-	dockerConfigPath := usr.HomeDir + "/.docker/config.json"
-	file, err := os.ReadFile(dockerConfigPath)
-	if err != nil {
-		panic(err)
-	}
-
-	var dockerConfig DockerConfig
-	err = json.Unmarshal(file, &dockerConfig)
-	if err != nil {
-		panic(err)
-	}
-
-	firstSlash := strings.Index(image, "/")
-	authConfigKey := "https://index.docker.io/v1/"
-	if firstSlash != -1 {
-		authConfigKey = image[:firstSlash]
-	}
-	authConfig, exists := dockerConfig.Auths[authConfigKey]
-	if !exists {
-		panic("Auth config not found")
-	}
-
-	// Pull image
-	encodedJSON, err := json.Marshal(authConfig)
-	if err != nil {
-		panic(err)
-	}
-	authStr := string(encodedJSON)
+	authStr := GetAuthString(image)
 
 	imgFullName := image
 	if !strings.Contains(image, "/") {
