@@ -1,6 +1,8 @@
 module github.com/evgnomon/zygote
 
-go 1.20
+go 1.22.0
+
+toolchain go1.23.0
 
 require (
 	github.com/docker/docker v27.2.0+incompatible
