@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	dcontainer "github.com/docker/docker/api/types/container"
+	networktypes "github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
 	"github.com/evgnomon/zygote/internal/container"
 )
@@ -65,9 +65,9 @@ func CreateDBContainer(numShards int, networkName string) {
 			CapAdd: []string{"SYS_NICE"},
 		}
 
-		_, err = cli.NetworkInspect(ctx, networkName, types.NetworkInspectOptions{})
+		_, err = cli.NetworkInspect(ctx, networkName, networktypes.InspectOptions{})
 		if err != nil {
-			_, err = cli.NetworkCreate(ctx, networkName, types.NetworkCreate{})
+			_, err = cli.NetworkCreate(ctx, networkName, networktypes.CreateOptions{})
 		}
 		if err != nil {
 			panic(err)
@@ -83,7 +83,7 @@ func CreateDBContainer(numShards int, networkName string) {
 			panic(err)
 		}
 
-		if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+		if err := cli.ContainerStart(ctx, resp.ID, dcontainer.StartOptions{}); err != nil {
 			panic(err)
 		}
 	}

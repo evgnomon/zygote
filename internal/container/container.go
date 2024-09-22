@@ -13,8 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
+	containertypes "github.com/docker/docker/api/types/container"
+	imagetypes "github.com/docker/docker/api/types/image"
+	networktypes "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
@@ -60,7 +61,7 @@ func Spawn(ctx context.Context,
 	portMap map[string]string,
 	networkName string,
 ) {
-	config := &container.Config{
+	config := &containertypes.Config{
 		Image:        name,
 		Cmd:          cmd,
 		AttachStdout: true,
@@ -72,12 +73,12 @@ func Spawn(ctx context.Context,
 			{HostIP: "0.0.0.0", HostPort: hostPort},
 		}
 	}
-	hostConfig := &container.HostConfig{
+	hostConfig := &containertypes.HostConfig{
 		AutoRemove:   true,
 		PortBindings: portBindings,
 	}
 	if networkName != "" {
-		hostConfig.NetworkMode = container.NetworkMode(networkName)
+		hostConfig.NetworkMode = containertypes.NetworkMode(networkName)
 	}
 	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, "")
 	if err != nil {
@@ -85,7 +86,7 @@ func Spawn(ctx context.Context,
 	}
 
 	// Attach to STDOUT before starting
-	attachOptions := types.ContainerAttachOptions{
+	attachOptions := containertypes.AttachOptions{
 		Stream: true,
 		Stdout: true,
 		Stderr: true,
@@ -98,7 +99,7 @@ func Spawn(ctx context.Context,
 
 	defer attachResponse.Close()
 
-	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+	if err := cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{}); err != nil {
 		panic(err)
 	}
 
@@ -135,15 +136,15 @@ func SpawnWithInput(
 		binds = append(binds, bind)
 	}
 
-	_, err = cli.NetworkInspect(ctx, networkName, types.NetworkInspectOptions{})
+	_, err = cli.NetworkInspect(ctx, networkName, networktypes.InspectOptions{})
 	if err != nil {
-		_, err = cli.NetworkCreate(ctx, networkName, types.NetworkCreate{})
+		_, err = cli.NetworkCreate(ctx, networkName, networktypes.CreateOptions{})
 	}
 	if err != nil {
 		panic(err)
 	}
 
-	config := &container.Config{
+	config := &containertypes.Config{
 		Image:        name,
 		Cmd:          cmd,
 		AttachStdout: true,
@@ -161,13 +162,13 @@ func SpawnWithInput(
 			{HostIP: "0.0.0.0", HostPort: hostPort},
 		}
 	}
-	hostConfig := &container.HostConfig{
+	hostConfig := &containertypes.HostConfig{
 		AutoRemove:   true,
 		PortBindings: portBindings,
 		Binds:        binds,
 	}
 	if networkName != "" {
-		hostConfig.NetworkMode = container.NetworkMode(networkName)
+		hostConfig.NetworkMode = containertypes.NetworkMode(networkName)
 	}
 
 	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, "")
@@ -176,7 +177,7 @@ func SpawnWithInput(
 	}
 
 	// Attach to STDIN, STDOUT, and STDERR before starting
-	attachOptions := types.ContainerAttachOptions{
+	attachOptions := containertypes.AttachOptions{
 		Stream: true,
 		Stdin:  inputStr != "", // Enable STDIN attachment
 		Stdout: true,
@@ -226,11 +227,11 @@ func SpawnWithInput(
 		wg.Wait()
 	}
 
-	if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+	if err := cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{}); err != nil {
 		panic(err)
 	}
 
-	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, containertypes.WaitConditionNotRunning)
 	select {
 	case err := <-errCh:
 		if err != nil {
@@ -292,9 +293,9 @@ type Container struct {
 	ID   string
 }
 
-type ListOption func(*types.ContainerListOptions)
+type ListOption func(*containertypes.ListOptions)
 
-func ListRunningContainers(opt *types.ContainerListOptions) {
+func ListRunningContainers(opt *containertypes.ListOptions) {
 	opt.All = false
 }
 
@@ -304,7 +305,7 @@ func List(opts ...ListOption) []*Container {
 		panic(err)
 	}
 
-	opt := types.ContainerListOptions{All: true}
+	opt := containertypes.ListOptions{All: true}
 	for _, o := range opts {
 		o(&opt)
 	}
@@ -332,12 +333,12 @@ func RemoveContainer(containerID string) {
 		panic(err)
 	}
 
-	removeOptions := types.ContainerRemoveOptions{
+	removeOptions := containertypes.RemoveOptions{
 		RemoveVolumes: true,
 		Force:         true,
 	}
 
-	err = cli.ContainerStop(ctx, containerID, container.StopOptions{Signal: "SIGTERM"})
+	err = cli.ContainerStop(ctx, containerID, containertypes.StopOptions{Signal: "SIGTERM"})
 	if err != nil {
 		panic(err)
 	}
@@ -465,7 +466,7 @@ func Pull(ctx context.Context, image string) {
 		log.Fatal(err)
 	}
 
-	images, err := cli.ImageList(ctx, types.ImageListOptions{})
+	images, err := cli.ImageList(ctx, imagetypes.ListOptions{})
 	if err != nil {
 		panic(err)
 	}
@@ -489,7 +490,7 @@ func Pull(ctx context.Context, image string) {
 
 	print("Pulling image: " + imgFullName + "\n")
 
-	reader, err := cli.ImagePull(ctx, imgFullName, types.ImagePullOptions{RegistryAuth: authStr})
+	reader, err := cli.ImagePull(ctx, imgFullName, imagetypes.PullOptions{RegistryAuth: authStr})
 	if err != nil {
 		panic(err)
 	}

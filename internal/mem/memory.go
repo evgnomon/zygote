@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	dcontainer "github.com/docker/docker/api/types/container"
+	dnet "github.com/docker/docker/api/types/network"
 	"github.com/docker/go-connections/nat"
 	"github.com/evgnomon/zygote/internal/container"
 	_ "github.com/go-sql-driver/mysql"
@@ -48,9 +48,9 @@ func CreateMemContainer(numShards int, networkName string) {
 			},
 		}
 
-		_, err = cli.NetworkInspect(ctx, networkName, types.NetworkInspectOptions{})
+		_, err = cli.NetworkInspect(ctx, networkName, dnet.InspectOptions{})
 		if err != nil {
-			_, err = cli.NetworkCreate(ctx, networkName, types.NetworkCreate{})
+			_, err = cli.NetworkCreate(ctx, networkName, dnet.CreateOptions{})
 		}
 		if err != nil {
 			panic(err)
@@ -66,7 +66,7 @@ func CreateMemContainer(numShards int, networkName string) {
 			panic(err)
 		}
 
-		if err := cli.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+		if err := cli.ContainerStart(ctx, resp.ID, dcontainer.StartOptions{}); err != nil {
 			panic(err)
 		}
 	}
