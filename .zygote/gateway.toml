@@ -1,0 +1,16 @@
+[nodeset.gateway]
+in = "main"
+
+[[nodepool.kvm.main.tcp.port]]
+source = 80
+target = 80
+
+[function.gateway]
+in = "gateway"
+image = "ghcr.io/evgnomon/boulevard"
+min_instances = 1
+max_instances = 1
+
+[[function.gateway.tcp.port]]
+source = 80
+target = 80

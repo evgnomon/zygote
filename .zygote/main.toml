@@ -1,0 +1,28 @@
+
+
+[nodeset.controller]
+label = "controller"
+
+[playbook.zygote_api]
+in = "controller"
+image = "./cmd/zygote_server"
+prefix = "api"
+
+[nodeset.stream]
+in = "main"
+default = 3
+shard = 3
+# label = "stream"
+
+[stream.main]
+in = "stream"
+duration = "1h"
+
+[nodeset.main]
+
+[nodeset.store]
+in = "main"
+
+[store.table.main]
+in = "store"
+allow.full = ["zygote"]
