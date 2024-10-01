@@ -2,7 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +17,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"go.uber.org/zap"
 
+	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/internal/db"
 	"github.com/evgnomon/zygote/internal/mem"
@@ -128,6 +134,62 @@ func main() {
 					return err
 				},
 			},
+			{
+				Name:  "cert",
+				Usage: "Certificate management",
+				Subcommands: []*cli.Command{
+					{
+						Name:  "root",
+						Usage: "Create a self-signed certificate or validate an existing one",
+						Flags: []cli.Flag{
+							&cli.Int64Flag{
+								Name:    "days",
+								Value:   365,
+								Aliases: []string{"c"},
+								Usage:   "Number of days the certificate is valid for",
+							},
+						},
+						Action: func(c *cli.Context) error {
+							cs, err := cert.Cert()
+							if err != nil {
+								return err
+							}
+							return cs.MakeRootCert(time.Now().AddDate(0, 0, c.Int("days")))
+						},
+					},
+					{
+						Name:  "sign",
+						Usage: "Sign a certificate",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:    "name",
+								Aliases: []string{"n"},
+								Usage:   "Domain address",
+							},
+						},
+						Action: func(c *cli.Context) error {
+							cs, err := cert.Cert()
+							if err != nil {
+								return err
+							}
+
+							if c.String("name") == "" {
+								return fmt.Errorf("name is required")
+							}
+
+							return cs.Sign([]string{c.String("name")}, time.Now().AddDate(2, 0, 0))
+						},
+					},
+				},
+			},
+			{
+				Name:  "call",
+				Usage: "Certificate management",
+				Action: func(c *cli.Context) error {
+					Call()
+					return nil
+				},
+			},
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
@@ -162,4 +224,54 @@ func initContainers(ctx context.Context, logger *zap.Logger, directory string) e
 	container.WaitHealthy("zygote-", containerStartTimeout)
 	m := NewMigration(directory)
 	return m.Up(ctx, logger)
+}
+
+func Call() {
+	cs, err := cert.Cert()
+	if err != nil {
+		log.Fatalf("Failed to create cert service: %v", err)
+
+	}
+
+	clientName := "brave"
+
+	clientCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(clientName), cs.FunctionKeyFile(clientName))
+	if err != nil {
+		log.Fatalf("Failed to load client certificate: %v", err)
+	}
+
+	// Load server CA certificate to trust it
+	serverCACert, err := os.ReadFile(cs.CaCertFile()) // This is the CA that signed the server's certificate
+	if err != nil {
+		log.Fatalf("Failed to read server CA certificate: %v", err)
+	}
+	serverCAs := x509.NewCertPool()
+	if ok := serverCAs.AppendCertsFromPEM(serverCACert); !ok {
+		log.Fatalf("Failed to append server CA certificate")
+	}
+
+	// Configure TLS with client certificate and trusted server CA
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{clientCert},
+		RootCAs:      serverCAs,
+	}
+
+	// Create an HTTP transport with the TLS configuration
+	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	client := &http.Client{Transport: transport}
+
+	// Send the request to the server
+	resp, err := client.Get("https://localhost:8443")
+	if err != nil {
+		log.Fatalf("Request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Read and display the response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalf("Failed to read response: %v", err)
+	}
+
+	fmt.Printf("Response from server: %s\n", body)
 }
