@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	mrand "math/rand"
 	"os"
 	"path/filepath"
 	"time"
 )
 
 const certDirPermission = 0700
+const int64Bits = 128
 
 type CertService struct {
 	ConfigHome string
@@ -74,8 +74,13 @@ func (c *CertService) MakeRootCert(expiresAt time.Time) error {
 		return err
 	}
 
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), int64Bits))
+	if err != nil {
+		return fmt.Errorf("failed to generate serial number: %v", err)
+	}
+
 	caTemplate := x509.Certificate{
-		SerialNumber:          big.NewInt(int64(mrand.Int63())),
+		SerialNumber:          serialNumber,
 		Subject:               pkix.Name{CommonName: "Zygote Root CA"},
 		NotBefore:             time.Now(),
 		NotAfter:              expiresAt,
@@ -143,9 +148,12 @@ func (c *CertService) Sign(domainName []string, expiresAt time.Time) error {
 	if err != nil {
 		return err
 	}
-
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), int64Bits))
+	if err != nil {
+		return fmt.Errorf("failed to generate serial number: %v", err)
+	}
 	serverTemplate := x509.Certificate{
-		SerialNumber: big.NewInt(int64(mrand.Int63())),
+		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			CommonName: domainName[0],
 		},

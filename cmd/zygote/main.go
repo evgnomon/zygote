@@ -5,13 +5,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/urfave/cli/v2"
@@ -26,6 +26,7 @@ import (
 )
 
 const containerStartTimeout = 20 * time.Second
+const httpClientTimeout = 10 * time.Second
 
 func main() {
 	logger, err := util.Logger()
@@ -185,7 +186,7 @@ func main() {
 			{
 				Name:  "call",
 				Usage: "Certificate management",
-				Action: func(c *cli.Context) error {
+				Action: func(_ *cli.Context) error {
 					Call()
 					return nil
 				},
@@ -227,24 +228,27 @@ func initContainers(ctx context.Context, logger *zap.Logger, directory string) e
 }
 
 func Call() {
+	// Get the certificate service
 	cs, err := cert.Cert()
 	if err != nil {
 		log.Fatalf("Failed to create cert service: %v", err)
-
 	}
 
 	clientName := "brave"
 
+	// Load client certificate and private key
 	clientCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(clientName), cs.FunctionKeyFile(clientName))
 	if err != nil {
 		log.Fatalf("Failed to load client certificate: %v", err)
 	}
 
-	// Load server CA certificate to trust it
-	serverCACert, err := os.ReadFile(cs.CaCertFile()) // This is the CA that signed the server's certificate
+	// Load server's CA certificate to trust the server
+	serverCACert, err := os.ReadFile(cs.CaCertFile()) // The CA that signed the server's certificate
 	if err != nil {
 		log.Fatalf("Failed to read server CA certificate: %v", err)
 	}
+
+	// Create a CertPool to hold the server CA certificate
 	serverCAs := x509.NewCertPool()
 	if ok := serverCAs.AppendCertsFromPEM(serverCACert); !ok {
 		log.Fatalf("Failed to append server CA certificate")
@@ -254,24 +258,24 @@ func Call() {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{clientCert},
 		RootCAs:      serverCAs,
+		MinVersion:   tls.VersionTLS12,
 	}
 
-	// Create an HTTP transport with the TLS configuration
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	client := &http.Client{Transport: transport}
+	// Create a Resty client and configure it with the custom transport
+	client := resty.New()
+	client.SetTransport(&http.Transport{
+		TLSClientConfig: tlsConfig,
+	})
+
+	// Set a timeout of 10 seconds
+	client.SetTimeout(httpClientTimeout)
 
 	// Send the request to the server
-	resp, err := client.Get("https://localhost:8443")
+	resp, err := client.R().Get("https://localhost:8443")
 	if err != nil {
 		log.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
 
 	// Read and display the response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalf("Failed to read response: %v", err)
-	}
-
-	fmt.Printf("Response from server: %s\n", body)
+	fmt.Printf("Response from server: %s\n", resp.String())
 }

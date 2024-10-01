@@ -7,3 +7,12 @@
       shell: . playbooks/files/check.sh
       args:
         chdir: "{{ lookup('env', 'PWD') }}"
+
+- name: Setup the controller VM
+  hosts: all
+  gather_facts: false
+  tasks:
+    - debug:
+        msg: "{{ ansible_facts['distribution'] }}"
+  tags:
+    - controller

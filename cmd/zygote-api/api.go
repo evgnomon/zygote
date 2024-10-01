@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/gin-gonic/gin"
@@ -38,6 +39,7 @@ func main() {
 		Certificates: []tls.Certificate{serverCert},
 		ClientCAs:    clientCAs,
 		ClientAuth:   tls.RequireAndVerifyClientCert,
+		MinVersion:   tls.VersionTLS12,
 	}
 
 	// Create a new Gin router
@@ -55,9 +57,10 @@ func main() {
 
 	// Create the HTTPS server with the TLS configuration
 	server := &http.Server{
-		Addr:      ":8443",
-		Handler:   router,
-		TLSConfig: tlsConfig,
+		Addr:              ":8443",
+		Handler:           router,
+		TLSConfig:         tlsConfig,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	// Start the HTTPS server
