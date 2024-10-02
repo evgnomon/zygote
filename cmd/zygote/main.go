@@ -178,7 +178,7 @@ func main() {
 								return fmt.Errorf("name is required")
 							}
 
-							return cs.Sign([]string{c.String("name")}, time.Now().AddDate(2, 0, 0))
+							return cs.Sign([]string{c.String("name")}, time.Now().AddDate(1, 0, 0))
 						},
 					},
 				},

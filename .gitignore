@@ -1,2 +1,5 @@
 /zygote
-/zygote-api
+/zygote-controller
+/bin
+/inventory
+/.config

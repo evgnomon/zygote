@@ -18,7 +18,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load server certificate: %v", err)
 	}
-	domainName := "localhost"
+	domainName := "controller.zygote"
 	serverCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
 	if err != nil {
 		log.Fatalf("Failed to load server certificate: %v", err)

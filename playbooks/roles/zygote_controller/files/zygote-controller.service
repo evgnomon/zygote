@@ -1,0 +1,14 @@
+[Unit]
+Description=Zygote Controller Service
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/zygote-controller
+Environment="ZYGOTE_CONFIG_HOME=/var/lib/zygote"
+Restart=always
+RestartSec=5
+User=zygote
+Group=zygote
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,53 @@
+---
+- name: Create user with a home directory
+  user:
+    name: "{{ zygote_user }}"
+    comment: "Zygote user"
+    system: true
+    shell: /usr/sbin/nologin
+    createhome: false
+    state: present
+
+- name: Ensure /var/lib/zygote directory exists for service data
+  file:
+    path: /var/lib/zygote
+    state: directory
+    owner: "{{ zygote_user }}"
+    group: "{{ zygote_user }}"
+    mode: '0700'
+
+- copy:
+    src: "{{ workspace }}/bin/{{ item }}"
+    dest: /usr/bin/{{ item }}
+    owner: "{{ zygote_user }}"
+    group: "{{ zygote_user }}"
+    mode: 0755
+  with_items:
+    - zygote-controller
+    - zygote
+
+- copy:
+    src: zygote-controller.service
+    dest: /etc/systemd/system/zygote-controller.service
+  notify:
+    - reload systemd
+    - enable zygote-controller
+    - start zygote-controller
+
+- name: Create root certificate
+  command: "zygote cert root"
+  args:
+    creates: "{{ zygote_home }}/certs/ca/ca_cert.pem"
+  environment:
+    ZYGOTE_CONFIG_HOME: "{{ zygote_home }}"
+
+- name: Sign zygote-controller certificate
+  command: "zygote cert sign --name controller.zygote"
+  args:
+    creates: "{{ zygote_home }}/certs/functions/controller.zygote/controller.zygote_cert.pem"
+  environment:
+    ZYGOTE_CONFIG_HOME: "{{ zygote_home }}"
+
+- name: Set permissions
+  shell:
+    cmd: "chown -R {{ zygote_user }}:{{ zygote_user }} {{ zygote_home }}"

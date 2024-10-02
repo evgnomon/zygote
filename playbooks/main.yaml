@@ -4,15 +4,21 @@
   gather_facts: false
   tasks:
     - name: "Run check.sh"
-      shell: . playbooks/files/check.sh
+      shell: |
+        ./playbooks/files/check.sh
+        ./playbooks/files/build.sh
       args:
-        chdir: "{{ lookup('env', 'PWD') }}"
+        chdir: "{{ workspace }}"
+  vars_files:
+    - vars/main.yaml
 
 - name: Setup the controller VM
   hosts: controller
-  gather_facts: false
-  tasks:
-    - debug:
-        msg: "{{ ansible_facts['distribution'] }}"
+  gather_facts: true
+  become: true
+  roles:
+    - role: zygote_controller
+  vars_files:
+    - vars/main.yaml
   tags:
     - controller

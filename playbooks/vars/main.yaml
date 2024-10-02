@@ -1,0 +1,3 @@
+workspace: "{{ lookup('env', 'PWD') }}"
+zygote_user: zygote
+zygote_home: /var/lib/zygote

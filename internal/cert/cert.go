@@ -23,6 +23,12 @@ type CertService struct {
 }
 
 func Cert() (*CertService, error) {
+	if os.Getenv("ZYGOTE_CONFIG_HOME") != "" {
+		cs := CertService{
+			ConfigHome: os.Getenv("ZYGOTE_CONFIG_HOME"),
+		}
+		return &cs, nil
+	}
 	userDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
