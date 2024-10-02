@@ -11,4 +11,5 @@ jobs:
     - name: Run Playbook
       uses: evgnomon/yacht@main
       with:
-        playbook: 'playbooks/main.yaml'
+        args: -t controller2
+        #playbook: 'playbooks/main.yaml'

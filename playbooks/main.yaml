@@ -9,7 +9,7 @@
         chdir: "{{ lookup('env', 'PWD') }}"
 
 - name: Setup the controller VM
-  hosts: all
+  hosts: controller
   gather_facts: false
   tasks:
     - debug:
