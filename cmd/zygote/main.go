@@ -186,8 +186,21 @@ func main() {
 			{
 				Name:  "call",
 				Usage: "Certificate management",
-				Action: func(_ *cli.Context) error {
-					Call()
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "url",
+						Aliases: []string{"u"},
+						Usage:   "URL to call",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					u := c.String("url")
+					client, err := Call(u)
+					r, err := client.R().Get(u)
+					if err != nil {
+						return err
+					}
+					fmt.Print(r.String())
 					return nil
 				},
 			},
@@ -227,7 +240,7 @@ func initContainers(ctx context.Context, logger *zap.Logger, directory string) e
 	return m.Up(ctx, logger)
 }
 
-func Call() {
+func Call(url string) (*resty.Client, error) {
 	// Get the certificate service
 	cs, err := cert.Cert()
 	if err != nil {
@@ -236,46 +249,34 @@ func Call() {
 
 	clientName := "brave"
 
-	// Load client certificate and private key
 	clientCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(clientName), cs.FunctionKeyFile(clientName))
 	if err != nil {
-		log.Fatalf("Failed to load client certificate: %v", err)
+		return nil, err
 	}
 
-	// Load server's CA certificate to trust the server
 	serverCACert, err := os.ReadFile(cs.CaCertFile()) // The CA that signed the server's certificate
 	if err != nil {
-		log.Fatalf("Failed to read server CA certificate: %v", err)
+		return nil, err
 	}
 
-	// Create a CertPool to hold the server CA certificate
 	serverCAs := x509.NewCertPool()
 	if ok := serverCAs.AppendCertsFromPEM(serverCACert); !ok {
-		log.Fatalf("Failed to append server CA certificate")
+		return nil, err
 	}
 
-	// Configure TLS with client certificate and trusted server CA
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{clientCert},
 		RootCAs:      serverCAs,
 		MinVersion:   tls.VersionTLS12,
 	}
 
-	// Create a Resty client and configure it with the custom transport
 	client := resty.New()
 	client.SetTransport(&http.Transport{
 		TLSClientConfig: tlsConfig,
 	})
 
-	// Set a timeout of 10 seconds
 	client.SetTimeout(httpClientTimeout)
 
-	// Send the request to the server
-	resp, err := client.R().Get("https://controller.zygote:443")
-	if err != nil {
-		log.Fatalf("Request failed: %v", err)
-	}
+	return client, nil
 
-	// Read and display the response
-	fmt.Printf("Response from server: %s\n", resp.String())
 }

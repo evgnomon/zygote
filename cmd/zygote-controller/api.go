@@ -19,6 +19,10 @@ func main() {
 		log.Fatalf("Failed to load server certificate: %v", err)
 	}
 	domainName := "controller.zygote"
+
+	if os.Getenv("ZYGOTE_CONTROLLER_DOMAIN") != "" {
+		domainName = os.Getenv("ZYGOTE_CONTROLLER_DOMAIN")
+	}
 	serverCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
 	if err != nil {
 		log.Fatalf("Failed to load server certificate: %v", err)
@@ -69,7 +73,7 @@ func main() {
 	}
 
 	// Start the HTTPS server
-	log.Printf("Starting server on https://%s:8443\n", domainName)
+	log.Printf("Starting server on https://%s:%s\n", domainName, port)
 	err = server.ListenAndServeTLS(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
 	if err != nil {
 		log.Fatalf("Server failed to start: %v", err)
