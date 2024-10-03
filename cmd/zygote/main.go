@@ -271,7 +271,7 @@ func Call() {
 	client.SetTimeout(httpClientTimeout)
 
 	// Send the request to the server
-	resp, err := client.R().Get("https://localhost:8443")
+	resp, err := client.R().Get("https://controller.zygote:443")
 	if err != nil {
 		log.Fatalf("Request failed: %v", err)
 	}

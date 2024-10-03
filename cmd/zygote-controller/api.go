@@ -55,9 +55,14 @@ func main() {
 		}
 	})
 
+	port := os.Getenv("ZYGOTE_CONTROLLER_PORT")
+	if port == "" {
+		port = "8443"
+	}
+
 	// Create the HTTPS server with the TLS configuration
 	server := &http.Server{
-		Addr:              ":8443",
+		Addr:              fmt.Sprintf(":%s", port),
 		Handler:           router,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,

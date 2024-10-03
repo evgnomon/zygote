@@ -26,6 +26,9 @@
     - zygote-controller
     - zygote
 
+- name: Setcap to allow binding to privileged ports
+  command: setcap 'cap_net_bind_service=+ep' /usr/bin/zygote-controller
+
 - copy:
     src: zygote-controller.service
     dest: /etc/systemd/system/zygote-controller.service
@@ -41,12 +44,13 @@
   environment:
     ZYGOTE_CONFIG_HOME: "{{ zygote_home }}"
 
-- name: Sign zygote-controller certificate
-  command: "zygote cert sign --name controller.zygote"
+- name: Sign service accounts
+  command: "zygote cert sign --name {{ item }}"
   args:
-    creates: "{{ zygote_home }}/certs/functions/controller.zygote/controller.zygote_cert.pem"
+    creates: "{{ zygote_home }}/certs/functions/{{ item }}/{{ item }}_cert.pem"
   environment:
     ZYGOTE_CONFIG_HOME: "{{ zygote_home }}"
+  with_items: "{{ zygote_service_accounts }}"
 
 - name: Set permissions
   shell:

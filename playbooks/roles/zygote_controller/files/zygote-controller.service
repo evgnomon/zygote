@@ -5,6 +5,7 @@ After=network.target
 [Service]
 ExecStart=/usr/bin/zygote-controller
 Environment="ZYGOTE_CONFIG_HOME=/var/lib/zygote"
+Environment="ZYGOTE_CONTROLLER_PORT=443"
 Restart=always
 RestartSec=5
 User=zygote
