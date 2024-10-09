@@ -1,0 +1,13 @@
+---
+- name: reload systemd
+  command: systemctl daemon-reload
+  become: true
+
+- name: enable zygote-controller
+  command: systemctl enable zygote-controller.service
+  become: true
+
+- name: start zygote-controller
+  command: systemctl start zygote-controller.service
+  become: true
+

@@ -1,4 +1,4 @@
-name: Main
+name: Yacht
 
 on:
   push:
@@ -11,4 +11,5 @@ jobs:
     - name: Run Playbook
       uses: evgnomon/yacht@main
       with:
-        playbook: 'playbooks/main.yaml'
+        vault: ${{ secrets.VAULT_FILE }}
+        vault_pass: ${{ secrets.VAULT_PASS }}

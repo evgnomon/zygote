@@ -1,0 +1,6 @@
+[function.gateway]
+image = "ghcr.io/evgnomon/boulevard"
+
+[[function.gateway.tcp.port]]
+source = 80
+target = 80

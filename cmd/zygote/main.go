@@ -2,16 +2,22 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/zap"
 
+	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/internal/db"
 	"github.com/evgnomon/zygote/internal/mem"
@@ -20,6 +26,7 @@ import (
 )
 
 const containerStartTimeout = 20 * time.Second
+const httpClientTimeout = 10 * time.Second
 
 func main() {
 	logger, err := util.Logger()
@@ -128,6 +135,75 @@ func main() {
 					return err
 				},
 			},
+			{
+				Name:  "cert",
+				Usage: "Certificate management",
+				Subcommands: []*cli.Command{
+					{
+						Name:  "root",
+						Usage: "Create a self-signed certificate or validate an existing one",
+						Flags: []cli.Flag{
+							&cli.Int64Flag{
+								Name:    "days",
+								Value:   365,
+								Aliases: []string{"c"},
+								Usage:   "Number of days the certificate is valid for",
+							},
+						},
+						Action: func(c *cli.Context) error {
+							cs, err := cert.Cert()
+							if err != nil {
+								return err
+							}
+							return cs.MakeRootCert(time.Now().AddDate(0, 0, c.Int("days")))
+						},
+					},
+					{
+						Name:  "sign",
+						Usage: "Sign a certificate",
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:    "name",
+								Aliases: []string{"n"},
+								Usage:   "Domain address",
+							},
+						},
+						Action: func(c *cli.Context) error {
+							cs, err := cert.Cert()
+							if err != nil {
+								return err
+							}
+
+							if c.String("name") == "" {
+								return fmt.Errorf("name is required")
+							}
+
+							return cs.Sign([]string{c.String("name")}, time.Now().AddDate(1, 0, 0))
+						},
+					},
+				},
+			},
+			{
+				Name:  "call",
+				Usage: "Certificate management",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "url",
+						Aliases: []string{"u"},
+						Usage:   "URL to call",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					u := c.String("url")
+					client, err := Call(u)
+					r, err := client.R().Get(u)
+					if err != nil {
+						return err
+					}
+					fmt.Print(r.String())
+					return nil
+				},
+			},
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
@@ -162,4 +238,45 @@ func initContainers(ctx context.Context, logger *zap.Logger, directory string) e
 	container.WaitHealthy("zygote-", containerStartTimeout)
 	m := NewMigration(directory)
 	return m.Up(ctx, logger)
+}
+
+func Call(url string) (*resty.Client, error) {
+	// Get the certificate service
+	cs, err := cert.Cert()
+	if err != nil {
+		log.Fatalf("Failed to create cert service: %v", err)
+	}
+
+	clientName := "brave"
+
+	clientCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(clientName), cs.FunctionKeyFile(clientName))
+	if err != nil {
+		return nil, err
+	}
+
+	serverCACert, err := os.ReadFile(cs.CaCertFile()) // The CA that signed the server's certificate
+	if err != nil {
+		return nil, err
+	}
+
+	serverCAs := x509.NewCertPool()
+	if ok := serverCAs.AppendCertsFromPEM(serverCACert); !ok {
+		return nil, err
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{clientCert},
+		RootCAs:      serverCAs,
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	client := resty.New()
+	client.SetTransport(&http.Transport{
+		TLSClientConfig: tlsConfig,
+	})
+
+	client.SetTimeout(httpClientTimeout)
+
+	return client, nil
+
 }

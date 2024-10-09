@@ -1,0 +1,57 @@
+---
+- name: Create user with a home directory
+  user:
+    name: "{{ zygote_user }}"
+    comment: "Zygote user"
+    system: true
+    shell: /usr/sbin/nologin
+    createhome: false
+    state: present
+
+- name: Ensure /var/lib/zygote directory exists for service data
+  file:
+    path: /var/lib/zygote
+    state: directory
+    owner: "{{ zygote_user }}"
+    group: "{{ zygote_user }}"
+    mode: '0700'
+
+- copy:
+    src: "{{ workspace }}/bin/{{ item }}"
+    dest: /usr/bin/{{ item }}
+    owner: "{{ zygote_user }}"
+    group: "{{ zygote_user }}"
+    mode: 0755
+  with_items:
+    - zygote-controller
+    - zygote
+
+- name: Setcap to allow binding to privileged ports
+  command: setcap 'cap_net_bind_service=+ep' /usr/bin/zygote-controller
+
+- copy:
+    src: zygote-controller.service
+    dest: /etc/systemd/system/zygote-controller.service
+  notify:
+    - reload systemd
+    - enable zygote-controller
+    - start zygote-controller
+
+- name: Create root certificate
+  command: "zygote cert root"
+  args:
+    creates: "{{ zygote_home }}/certs/ca/ca_cert.pem"
+  environment:
+    ZYGOTE_CONFIG_HOME: "{{ zygote_home }}"
+
+- name: Sign service accounts
+  command: "zygote cert sign --name {{ item }}"
+  args:
+    creates: "{{ zygote_home }}/certs/functions/{{ item }}/{{ item }}_cert.pem"
+  environment:
+    ZYGOTE_CONFIG_HOME: "{{ zygote_home }}"
+  with_items: "{{ zygote_service_accounts }}"
+
+- name: Set permissions
+  shell:
+    cmd: "chown -R {{ zygote_user }}:{{ zygote_user }} {{ zygote_home }}"
