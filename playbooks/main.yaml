@@ -19,6 +19,8 @@
         ./playbooks/files/build.sh
       args:
         chdir: "{{ workspace }}"
+    - debug:
+        msg: z_tag is "{{ z_tag }}"
     - name: Create Release for Zygote binaries
       when: z_tag
       pkg_release:
