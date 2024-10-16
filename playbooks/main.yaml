@@ -31,9 +31,9 @@
         release_description: Zygote release {{ z_tag }}
         prerelease: false
         binaries:
-          - path: "{{ workspace + '/zygote' }}"
+          - path: "{{ workspace + 'bin//zygote' }}"
             name: zygote-{{ ansible_os_family | lower }}-{{ ansible_architecture | lower }}
-          - path: "{{ workspace + '/zygote-controller' }}"
+          - path: "{{ workspace + 'bin/zygote-controller' }}"
             name: zygote_controller-{{ ansible_os_family | lower }}-{{ ansible_architecture | lower }}
 
 - name: Setup the controller VM
