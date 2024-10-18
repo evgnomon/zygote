@@ -6,21 +6,18 @@
     - vars/main.yaml
   collections:
     - evgnomon.catamaran
+  roles:
+    - z_facts
+    - z_secrets
+    - z_defaults
   tasks:
-    - import_role:
-        name: z_secrets
-    - import_role:
-        name: z_defaults
-    - setup:
-        gather_subset: min
     - name: "Run check.sh"
       shell: |
         ./playbooks/files/check.sh
         ./playbooks/files/build.sh
       args:
         chdir: "{{ workspace }}"
-    - debug:
-        msg: z_tag is "{{ z_tag }}"
+
     - name: Create Release for Zygote binaries
       when: z_tag
       pkg_release:
