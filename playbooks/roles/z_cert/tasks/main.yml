@@ -1,0 +1,35 @@
+---
+- name: Sign service accounts
+  command: "zygote cert sign --name {{ func_name }}"
+  args:
+    creates: "{{ cert_file }}"
+  environment:
+    ZYGOTE_CONFIG_HOME: "{{ zygote_home }}"
+
+- name: Set permissions
+  shell: |
+    chown -R {{ zygote_user }}:{{ zygote_user }} {{ func_cert_dir }}
+    chmod -R 700 {{ func_cert_dir }}
+
+- name: Create service user
+  delegate_to: "{{ func_host }}"
+  user:
+    name: "{{ func_name }}"
+    comment: "{{ func_name }} service user"
+    system: true
+    shell: /usr/sbin/nologin
+    createhome: false
+    state: present
+
+- name: Set permissions on the function host
+  delegate_to: "{{ func_host }}"
+  shell: |
+    mkdir -p {{ func_cert_dir }}
+    chown -R {{ func_name }}:{{ func_name }} {{ func_cert_dir }}
+    chmod -R 700 {{ func_cert_dir }}
+
+- name: Copy files from source to destination
+  synchronize:
+    mode: pull
+    src: "{{ func_cert_dir }}"
+    dest: rsync://{{ func_host }}/{{ func_cert_dir }}

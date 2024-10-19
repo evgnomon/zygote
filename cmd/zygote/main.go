@@ -195,7 +195,10 @@ func main() {
 				},
 				Action: func(c *cli.Context) error {
 					u := c.String("url")
-					client, err := Call(u)
+					client, err := Call()
+					if err != nil {
+						return err
+					}
 					r, err := client.R().Get(u)
 					if err != nil {
 						return err
@@ -240,7 +243,7 @@ func initContainers(ctx context.Context, logger *zap.Logger, directory string) e
 	return m.Up(ctx, logger)
 }
 
-func Call(url string) (*resty.Client, error) {
+func Call() (*resty.Client, error) {
 	// Get the certificate service
 	cs, err := cert.Cert()
 	if err != nil {
@@ -278,5 +281,4 @@ func Call(url string) (*resty.Client, error) {
 	client.SetTimeout(httpClientTimeout)
 
 	return client, nil
-
 }
