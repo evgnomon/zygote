@@ -1,0 +1,17 @@
+---
+- name: "Check"
+  tags:
+    - check
+    - z
+  shell: |
+    ./scripts/check.sh
+  args:
+    chdir: "{{ workspace }}"
+
+- name: "Build"
+  tags:
+   - build
+  shell: |
+    ./scripts/build.sh
+  args:
+    chdir: "{{ workspace }}"

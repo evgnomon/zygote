@@ -1,45 +1,7 @@
 ---
-- name: Main Playbook
+- name: Push Play
   hosts: localhost
   gather_facts: false
-  vars_files:
-    - vars/main.yaml
-  collections:
-    - evgnomon.catamaran
   roles:
-    - z_facts
-    - z_secrets
-    - z_defaults
-  tasks:
-    - name: "Run check.sh"
-      shell: |
-        ./playbooks/files/check.sh
-        ./playbooks/files/build.sh
-      args:
-        chdir: "{{ workspace }}"
-
-    - name: Create Release for Zygote binaries
-      when: z_tag
-      pkg_release:
-        github_token: "{{ z_user_token }}"
-        repo: evgnomon/zygote
-        tag_name: "{{ z_tag }}"
-        release_name: Release {{ z_tag }}
-        release_description: Zygote release {{ z_tag }}
-        prerelease: false
-        binaries:
-          - path: "{{ workspace + '/bin/zygote' }}"
-            name: zygote-{{ ansible_os_family | lower }}-{{ ansible_architecture | lower }}
-          - path: "{{ workspace + '/bin/zygote-controller' }}"
-            name: zygote_controller-{{ ansible_os_family | lower }}-{{ ansible_architecture | lower }}
-
-- name: Setup the controller VM
-  hosts: controller
-  gather_facts: true
-  become: true
-  vars_files:
-    - vars/main.yaml
-  tags:
-    - controller
-  roles:
-    - zygote_controller
+    - z_build
+    - z_dist
