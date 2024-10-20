@@ -27,7 +27,7 @@ for TARGET in "${TARGETS[@]}"; do
     GOOS=$OS GOARCH=$ARCH go build -v -o "$OUTPUT" ./cmd/zygote
 
     # Build zygote-controller binary
-    OUTPUT_CONTROLLER="./dist/zygote-controller-$OS-$ARCH"
+    OUTPUT_CONTROLLER="./dist/zygote_controller-$OS-$ARCH"
     [ "$OS" = "windows" ] && OUTPUT_CONTROLLER="$OUTPUT_CONTROLLER.exe"
-    GOOS=$OS GOARCH=$ARCH go build -v -o "$OUTPUT_CONTROLLER" ./cmd/zygote-controller
+    GOOS=$OS GOARCH=$ARCH go build -v -o "$OUTPUT_CONTROLLER" ./cmd/zygote_controller
 done
