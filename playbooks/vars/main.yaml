@@ -1,7 +1,0 @@
-# workspace: "{{ lookup('env', 'PWD') }}"
-# zygote_user: zygote
-# zygote_home: /var/lib/zygote
-# zygote_service_accounts:
-#   - controller.zygote
-#   - user_1.zygote
-#   - user_2.zygote
