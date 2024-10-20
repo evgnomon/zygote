@@ -1,0 +1,14 @@
+---
+zygote_version: v0.1.7
+zygote_user: zygote
+zygote_bin_prefix: /usr/local/bin
+zygote_releases: https://github.com/evgnomon/zygote/releases
+zygote_controller_binary_file: "{{ zygote_bin_prefix }}/zygote_controller"
+zygote_controller_url: "{{ zygote_releases }}/download/{{ zygote_version }}/zygote_controller-linux-amd64"
+zygote_binary_file: "{{ zygote_bin_prefix }}/zygote"
+zygote_url: "{{ zygote_releases }}/download/{{ zygote_version }}/zygote-linux-amd64"
+zygote_binaries:
+  - path: "{{zygote_controller_binary_file }}"
+    url: "{{ zygote_controller_url }}"
+  - path: "{{zygote_binary_file }}"
+    url: "{{ zygote_url }}"

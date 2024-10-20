@@ -1,0 +1,28 @@
+---
+- name: Create root certificate
+  command: "zygote cert root"
+  args:
+    creates: "{{ zygote_home }}/certs/ca/ca_cert.pem"
+  environment:
+    ZYGOTE_CONFIG_HOME: "{{ zygote_home }}"
+
+- name: Set permissions
+  shell: |
+    chown zygote:zygote {{ zygote_home }}
+    chmod 0755 {{ zygote_home }}
+
+    mkdir -p {{ zygote_home }}/functions
+    chown zygote:zygote {{ zygote_home }}/functions
+    chmod 0755 {{ zygote_home }}/functions
+
+    mkdir -p {{ zygote_home }}/certs
+    chown zygote:zygote {{ zygote_home }}/certs
+    chmod 0755 {{ zygote_home }}/certs
+
+    mkdir -p {{ zygote_home }}/certs/ca
+    chown -R zygote:zygote {{ zygote_home }}/certs/ca
+    chmod 0700 {{ zygote_home }}/certs/ca
+
+    mkdir -p {{ zygote_home }}/functions
+    chown zygote:zygote {{ zygote_home }}/functions
+    chmod 0755 {{ zygote_home }}/functions
