@@ -1,0 +1,19 @@
+---
+- name: Ensure Zygote Controller on localhost
+  hosts:
+    - localhost
+  gather_facts: false
+  roles:
+    - role: ensure_zygote_controller
+    - role: z_cert
+      vars:
+        func_name: "haproxy"
+
+- name: Ensure HAProxy on main
+  hosts:
+    - main
+  gather_facts: false
+  roles:
+    - role: z_service
+      vars:
+        func_name: "haproxy"

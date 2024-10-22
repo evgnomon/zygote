@@ -1,24 +1,9 @@
 ---
-- name: Install Zygote
-  shell: |
-    curl -sSL -o {{ item.path }} {{ item.url }}
-    chmod +x {{ item.path }}
-  with_items:
-    - "{{ zygote_binaries }}"
-
-- name: Create user with a home directory
-  user:
-    name: "{{ zygote_user }}"
-    comment: "Zygote user"
-    system: true
-    shell: /usr/sbin/nologin
-    createhome: false
-    state: present
-
-- name: Ensure /var/lib/zygote directory exists for service data
-  file:
-    path: /var/lib/zygote
-    state: directory
-    owner: "{{ zygote_user }}"
-    group: "{{ zygote_user }}"
-    mode: '0700'
+- name: Install binaries
+  include_role:
+    name: z_install
+  vars:
+    func_name: zygote
+    z_binaries:
+      - path: "{{zygote_binary_file }}"
+        url: "{{ zygote_url }}"

@@ -1,0 +1,17 @@
+---
+- name: Install program binaries
+  become: true
+  command: curl -sSL -o "{{ item.path }}" "{{ item.url }}"
+  with_items: "{{ z_binaries }}"
+  when: z_binaries is defined
+
+- name: Make binaries executable
+  become: true
+  command: chmod +x {{ item.path }}
+  with_items: "{{ z_binaries }}"
+  when: z_binaries is defined
+
+- name: Setcap to allow binding to privileged ports
+  become: true
+  command: setcap 'cap_net_bind_service=+ep' {{ item.path }}
+  with_items: "{{ z_binaries | selectattr('privileged_ports', 'defined' ) |selectattr('privileged_ports', 'eq', true ) | list }}"

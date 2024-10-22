@@ -1,0 +1,6 @@
+---
+dependencies:
+  - role: z_sshadd
+    vars:
+      ssh_key: "{{ zygote_ssh_key }}"
+  - role: ensure_ca_cert

@@ -1,0 +1,24 @@
+---
+- name: Create service user
+  become: true
+  user:
+    name: "{{ func_name }}"
+    comment: "{{ func_name }} service user"
+    system: true
+    shell: /usr/sbin/nologin
+    createhome: false
+    state: present
+
+- file:
+   state: directory
+   path: "{{ func_cert_dir }}"
+   owner: "{{ func_name }}"
+   group: "{{ func_name }}"
+   mode: 0700
+
+- name: Sign service accounts
+  command: "zygote cert sign --name {{ func_name }}"
+  args:
+    creates: "{{ cert_file }}"
+  environment:
+    ZYGOTE_CONFIG_HOME: "{{ zygote_home }}"

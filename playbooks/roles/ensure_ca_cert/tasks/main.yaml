@@ -1,0 +1,8 @@
+---
+- name: Copy CA cert to destination
+  become: true
+  copy:
+    src: "{{ zygote_ca_cert_file }}"
+    dest: "{{ zygote_ca_cert_file }}"
+    owner: "{{ zygote_user}}"
+    mode: 0755

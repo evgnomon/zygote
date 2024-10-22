@@ -1,0 +1,4 @@
+---
+- delegate_to: localhost
+  shell: |
+    ssh-add {{ lookup("env", "HOME") }}/.ssh/{{ ssh_key }}
