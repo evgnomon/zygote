@@ -1,7 +1,0 @@
----
-# zygote_home: /var/lib/zygote
-# zygote_user: zygote
-# cert_names:
-#   - zygote_controller
-#   - fun_1
-#   - fun_2
