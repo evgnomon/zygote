@@ -1,5 +1,4 @@
 ---
-# func_name: "{{ name }}"
 func_user: "{{ func_name }}"
 func_group: "{{ func_name }}"
 func_bin_file: /usr/local/bin/{{ func_name }}
