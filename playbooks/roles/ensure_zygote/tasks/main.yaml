@@ -1,0 +1,9 @@
+---
+- name: Install binaries
+  include_role:
+    name: z_install
+  vars:
+    func_name: zygote
+    z_binaries:
+      - path: "{{zygote_binary_file }}"
+        url: "{{ zygote_url }}"

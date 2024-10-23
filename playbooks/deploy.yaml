@@ -1,0 +1,38 @@
+---
+- name: Ensure Zygote Controller on localhost
+  hosts:
+    - localhost
+  gather_facts: false
+  vars_files:
+    - vars/main.yaml
+  roles:
+    - role: evgnomon.catamaran.z_defaults
+  tasks:
+    - debug:
+        msg: "{{ z_env_name }}"
+    - name: Add a new host to the inventory
+      add_host:
+        name: "{{ item.name }}"
+        ansible_ssh_host: "{{ item.ansible_host }}"
+        groups: "{{ item.groups }}"
+        ansible_python_interpreter: "{{ item.ansible_python_interpreter }}"
+      with_items: "{{ hosts[z_env_name] if z_env_name in hosts else hosts['default'] }}"
+
+- name: Ensure Zygote Controller on localhost
+  hosts:
+    - localhost
+  gather_facts: false
+  roles:
+    - role: ensure_zygote_controller
+    - role: z_cert
+      vars:
+        func_name: "haproxy"
+
+- name: Ensure HAProxy on main
+  hosts:
+    - main
+  gather_facts: false
+  roles:
+    - role: z_service
+      vars:
+        func_name: "haproxy"

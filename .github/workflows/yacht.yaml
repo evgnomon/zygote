@@ -21,9 +21,14 @@ jobs:
       packages: write
     steps:
     - uses: actions/checkout@v4
+    - name: Extract branch name
+      shell: bash
+      run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+      id: extract_branch
     - name: Run Playbook
       uses: evgnomon/yacht@main
       with:
         vault: ${{ secrets.VAULT_FILE }}
         vault_pass: ${{ secrets.VAULT_PASS }}
         github_token: ${{ secrets.GITHUB_TOKEN }}
+        inventory: playbooks/${{ steps.extract_branch.outputs.branch }}_inventory.yaml

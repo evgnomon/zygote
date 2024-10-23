@@ -2,16 +2,15 @@
 <img src="docs/assets/Zygote.svg" width="256" height="256">
 </p>
 <p align="center"> Zygote </p>
-<p align="center"> A Function Runtime for Factories without Human </p>
+<p align="center"> A self-custodial serverless function runtime! </p>
 
 
-> Machine is a name. An IO domain. Secure the exit right now as "no human is let in the factory" in 44 minutes. That factory prints everything including itself.
+> Secure your exit right now as "no human is let in the factory" in 44 minutes!
 
 > Dec 2023
 
-Use Zygote as an environment to deploy and run your cloud functions. The control plane is in Git, which is the rule without the ruler!
+Describe what your functions use from the platform in `.zygote.toml`, leave the rest to Zygote! You have files, memory, tables and event streams managed by Zygote! You don't want to complicate it further before your IPO! Just subscribe to Zygote .Run to kickstart your first function in any programming language now!
 
-You have two options using Zygote, Subscribe to Zygote .Run and run your cloud function in there. Or fork everything and run it on your own machine(s).
-Everything is open sourced for you production ready, just fork it and start using it.
+Zygote works kind of everywhere! You can install `zygote` binary on your local machine to setup a real local environment (not a mock) for development and testing. Linux, macOS and Windows (Both native and over WSL2) are supported for local development. Also works in your CI. Bultin support for MySQL InnoDB cluster as the general purpose Table store with replication support on commodity nodes and a sharded Redis cluster as In-Memory KeyValue store also as the streaming fabric.
 
-Linux, macOS and Windows (Both native and over WSL2) are supported for local development. Bultin support for MySQL InnoDB cluster as the general purpose database and a sharded Redis cluster as in-memory store and message bus.
+Subscribe to Zygote .Run and run your cloud function in there. Or Install everything on your own machine(s). Zygote is open sourced for you and it is production ready, just fork it and start using it. HGL license also protects Zygote's license being free and stable forever.

@@ -1,0 +1,4 @@
+---
+zygote_home: "/var/lib/zygote"
+zygote_ca_cert_dir: "{{ zygote_home }}/certs/ca"
+zygote_ca_cert_file: "{{ zygote_ca_cert_dir }}/ca_cert.pem"

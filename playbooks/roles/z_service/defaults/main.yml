@@ -1,0 +1,10 @@
+---
+func_user: "{{ func_name }}"
+func_group: "{{ func_name }}"
+func_bin_file: /usr/local/bin/{{ func_name }}
+func_home: /var/lib/{{ func_name }}
+exec_start: "{{ func_bin_file }}"
+func_env:
+  ZYGOTE_CONFIG_HOME: /var/lib/{{ func_name }}
+  FUNC_HOME: "{{ func_name }}"
+  ZYGOTE_CONTROLLER_PORT: 443

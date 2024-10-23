@@ -1,0 +1,4 @@
+---
+dependencies:
+  - role: z_sshadd
+  - role: evgnomon.catamaran.z_facts

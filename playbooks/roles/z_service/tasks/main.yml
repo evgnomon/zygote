@@ -1,0 +1,48 @@
+---
+- name: Create user account for the program
+  become: true
+  user:
+    name: "{{ func_name }}"
+    comment: "{{ func_name }} user"
+    system: true
+    shell: /usr/sbin/nologin
+    createhome: false
+    state: present
+
+- include_role:
+    name: ensure_cert
+
+- template:
+    src: service.j2
+    dest: /etc/systemd/system/{{ func_name }}.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Ensure /var/lib directory exists for the program
+  become: true
+  file:
+    path: /var/lib/{{ func_name }}
+    state: directory
+    owner: "{{ func_name }}"
+    group: "{{ func_name }}"
+    mode: 0755
+
+- name: Check if system has been booted with systemd
+  command: cat /proc/1/comm
+  register: init_system
+
+- name: reload systemd
+  become: true
+  when: init_system.stdout == "systemd"
+  command: systemctl daemon-reload
+
+- name: enable {{ func_name }}
+  become: true
+  when: init_system.stdout == "systemd"
+  command: systemctl enable {{ func_name }}.service
+
+- name: start {{ func_name }}
+  become: true
+  when: init_system.stdout == "systemd"
+  command: systemctl start {{ func_name }}.service

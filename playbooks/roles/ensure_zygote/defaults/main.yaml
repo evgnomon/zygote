@@ -1,0 +1,24 @@
+---
+zygote_version: 0.1.7
+z_os: >-
+  {{
+    {
+      'Darwin': 'darwin',
+      'Debian': 'linux',
+      'Windows': 'windows'
+    }[ansible_os_family] | default('')
+  }}
+z_arch: >-
+  {{
+    {
+      'x86_64': 'amd64',
+      'aarch64': 'arm64',
+      'i386': '386'
+    }[ansible_architecture] | default('')
+  }}
+
+zygote_user: zygote
+zygote_bin_prefix: /usr/local/bin
+zygote_releases: https://github.com/evgnomon/zygote/releases
+zygote_binary_file: "{{ zygote_bin_prefix }}/zygote"
+zygote_url: "{{ zygote_releases }}/download/v{{ zygote_version }}/zygote-{{ z_os }}-{{ z_arch }}"
