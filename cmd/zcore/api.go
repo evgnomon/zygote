@@ -18,10 +18,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load server certificate: %v", err)
 	}
-	domainName := "controller.zygote"
+	domainName := "core.zygote"
 
-	if os.Getenv("ZYGOTE_CONTROLLER_DOMAIN") != "" {
-		domainName = os.Getenv("ZYGOTE_CONTROLLER_DOMAIN")
+	if os.Getenv("ZCORE_DOMAIN") != "" {
+		domainName = os.Getenv("ZCORE_DOMAIN")
 	}
 	serverCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
 	if err != nil {

@@ -22,12 +22,12 @@ for TARGET in "${TARGETS[@]}"; do
     ARCH=$(echo $TARGET | cut -d '/' -f 2)
 
     # Build zygote binary
-    OUTPUT="./dist/zygote-$OS-$ARCH"
+    OUTPUT="./dist/z-$OS-$ARCH"
     [ "$OS" = "windows" ] && OUTPUT="$OUTPUT.exe"
     GOOS=$OS GOARCH=$ARCH go build -v -o "$OUTPUT" ./cmd/zygote
 
-    # Build zygote-controller binary
-    OUTPUT_CONTROLLER="./dist/zygote_controller-$OS-$ARCH"
-    [ "$OS" = "windows" ] && OUTPUT_CONTROLLER="$OUTPUT_CONTROLLER.exe"
-    GOOS=$OS GOARCH=$ARCH go build -v -o "$OUTPUT_CONTROLLER" ./cmd/zygote_controller
+    # Build zcore binary
+    OUTPUT_ZCORE="./dist/zcore-$OS-$ARCH"
+    [ "$OS" = "windows" ] && OUTPUT_ZCORE="$OUTPUT_ZCORE.exe"
+    GOOS=$OS GOARCH=$ARCH go build -v -o "$OUTPUT_ZCORE" ./cmd/zcore
 done
