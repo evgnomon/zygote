@@ -4,7 +4,7 @@
     - check
     - z
   shell: |
-    ./scripts/check.sh
+    ./scripts/check
   args:
     chdir: "{{ workspace }}"
 
@@ -12,6 +12,6 @@
   tags:
    - build
   shell: |
-    ./scripts/build.sh
+    ./scripts/build
   args:
     chdir: "{{ workspace }}"

@@ -23,19 +23,88 @@ import (
 	"github.com/evgnomon/zygote/internal/mem"
 	"github.com/evgnomon/zygote/internal/migration"
 	"github.com/evgnomon/zygote/internal/util"
+	"github.com/evgnomon/zygote/pkg/utils"
 )
 
 const containerStartTimeout = 20 * time.Second
 const httpClientTimeout = 10 * time.Second
+const editor = "vi"
 
 func main() {
+	os.Setenv("EDITOR", editor)
 	logger, err := util.Logger()
 	if err != nil {
 		panic(err)
 	}
 
 	app := &cli.App{
+		Action: func(_ *cli.Context) error {
+			return nil
+		},
 		Commands: []*cli.Command{
+			{
+				Name:  "vault",
+				Usage: "Encrypt and Decrypt secrets",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "encrypt",
+						Aliases: []string{"e"},
+						Usage:   "File to encrypt",
+					},
+					&cli.StringFlag{
+						Name:    "decrypt",
+						Aliases: []string{"d"},
+						Usage:   "File to decrypt",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					if c.String("encrypt") != "" {
+						err := utils.EncryptFile(c.String("encrypt"), c.Args().Get(0))
+						if err != nil {
+							return err
+						}
+					} else if c.String("decrypt") != "" {
+						err := utils.DecryptFile(c.String("decrypt"))
+						if err != nil {
+							return err
+						}
+					}
+
+					return nil
+				},
+			},
+			{
+				Name:    "blueprint",
+				Aliases: []string{"x"},
+				Usage:   "Setup this machine with Blueprint. Upgrade the machine if it is alreadt been setup",
+				Action: func(_ *cli.Context) error {
+					currentDir, err := os.Getwd()
+					if err != nil {
+						return err
+					}
+					err = utils.Elevate()
+					if err != nil {
+						return err
+					}
+					err = utils.Chdir(fmt.Sprintf("%s/src/github.com/%s/blueprint", utils.UserHome(), utils.User()))
+					if err != nil {
+						return err
+					}
+					err = utils.Run("ansible-playbook", "-i", "inventory.py", "main.yaml")
+					if err != nil {
+						return err
+					}
+					err = utils.Chdir(currentDir)
+					if err != nil {
+						return err
+					}
+					err = utils.UnElevate()
+					if err != nil {
+						return err
+					}
+					return nil
+				},
+			},
 			{
 				Name:  "migrate",
 				Usage: "Manage database migrations. Allows you to apply or revert changes to the database schema.",
