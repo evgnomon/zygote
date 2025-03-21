@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,8 +31,352 @@ const containerStartTimeout = 20 * time.Second
 const httpClientTimeout = 10 * time.Second
 const editor = "vi"
 
+func vaultCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "vault",
+		Usage: "Encrypt and Decrypt secrets",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "encrypt",
+				Aliases: []string{"e"},
+				Usage:   "File to encrypt",
+			},
+			&cli.StringFlag{
+				Name:    "decrypt",
+				Aliases: []string{"d"},
+				Usage:   "File to decrypt",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			if c.String("encrypt") != "" {
+				err := utils.EncryptFile(c.String("encrypt"), c.Args().Get(0))
+				if err != nil {
+					return err
+				}
+			} else if c.String("decrypt") != "" {
+				err := utils.DecryptFile(c.String("decrypt"))
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
+		},
+	}
+}
+
+func blueprintCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "blueprint",
+		Aliases: []string{"x"},
+		Usage:   "Setup this machine with Blueprint. Upgrade the machine if it is alreadt been setup",
+		Action: func(_ *cli.Context) error {
+			currentDir, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			err = utils.Elevate()
+			if err != nil {
+				return err
+			}
+			err = utils.Chdir(fmt.Sprintf("%s/src/github.com/%s/blueprint", utils.UserHome(), utils.User()))
+			if err != nil {
+				return err
+			}
+			err = utils.Run("ansible-playbook", "-i", "inventory.py", "main.yaml")
+			if err != nil {
+				return err
+			}
+			err = utils.Chdir(currentDir)
+			if err != nil {
+				return err
+			}
+			err = utils.UnElevate()
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+	}
+}
+
+func buildCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "build",
+		Aliases: []string{"y"},
+		Usage:   "Build the current project",
+		Action: func(_ *cli.Context) error {
+			os.Setenv("ANSIBLE_STDOUT_CALLBACK", "yaml")
+			if os.Getenv("YACHT_EVENT_NAME") == "" {
+				os.Setenv("YACHT_EVENT_NAME", "push")
+			}
+			refName, err := utils.RunCapture("git", "symbolic-ref", "--short", "HEAD")
+			if err != nil {
+				return fmt.Errorf("failed to get ref name: %w", err)
+			}
+
+			if os.Getenv("YACHT_REF_NAME") == "" {
+				os.Setenv("YACHT_REF_NAME", refName)
+			}
+
+			err = utils.CreateRepoVault()
+			if err != nil {
+				return fmt.Errorf("failed to create repo vault: %w", err)
+			}
+
+			os.Setenv("ANSIBLE_VAULT_PASSWORD_FILE", filepath.Join(utils.UserHome(), ".config", "zygote", "scripts", "vault_pass"))
+
+			vaultPath, err := utils.RepoVaultPath()
+			if err != nil {
+				return err
+			}
+
+			secretFilePathExist, err := utils.PathExists(vaultPath)
+			if err != nil {
+				return err
+			}
+			if !secretFilePathExist {
+				err = utils.Run("ansible-vault", "create", vaultPath)
+				if err != nil {
+					return err
+				}
+			}
+
+			os.Setenv("INPUT_VAULT_FILE", vaultPath)
+			err = utils.Run("ansible-playbook", "playbooks/main.yaml")
+			if err != nil {
+				return err
+			}
+
+			return nil
+		},
+	}
+}
+
+func checkAction(_ *cli.Context) error {
+	err := utils.Run("scripts/check")
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func checkCommand() *cli.Command {
+	return &cli.Command{
+		Name:   "check",
+		Usage:  "Run check script in the current repo",
+		Action: checkAction,
+	}
+}
+
+func migrateCommand() *cli.Command {
+	logger, err := util.Logger()
+	if err != nil {
+		panic(err)
+	}
+	return &cli.Command{
+		Name:  "migrate",
+		Usage: "Manage database migrations. Allows you to apply or revert changes to the database schema.",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "directory",
+				Aliases: []string{"C"},
+				Value:   "sqls",
+				Usage:   "Directory containing the SQL migration files.",
+			},
+		},
+		Subcommands: []*cli.Command{
+			{
+				Name:  "up",
+				Usage: "Apply all pending migrations to update the database schema to the latest version.",
+				Action: func(c *cli.Context) error {
+					ctx := context.Background()
+					m := NewMigration(c.String("directory"))
+					return m.Up(ctx, logger)
+				},
+			},
+			{
+				Name:  "down",
+				Usage: "Revert the last applied migration to undo changes to the database schema.",
+				Action: func(c *cli.Context) error {
+					ctx := context.Background()
+					m := NewMigration(c.String("directory"))
+					return m.Down(ctx, logger)
+				},
+			},
+		},
+	}
+}
+
+func initCommand() *cli.Command {
+	logger, err := util.Logger()
+	if err != nil {
+		panic(err)
+	}
+	return &cli.Command{
+		Name:  "init",
+		Usage: "Initialize DB and Mem containers for a new project",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "directory",
+				Aliases: []string{"C"},
+				Value:   "sqls",
+				Usage:   "Directory containing the SQL migration files.",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			ctx := context.Background()
+			err := initContainers(ctx, logger, c.String("directory"))
+			return err
+		},
+	}
+}
+
+func deinitCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "deinit",
+		Usage: "Clean up DB and Mem containers created by zygote",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "remove-volume",
+				Aliases: []string{"v"},
+				Usage:   "Remove volumes associated with the containers",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			for _, v := range container.List() {
+				if strings.HasPrefix(v.Name, "/zygote-") {
+					container.RemoveContainer(v.ID)
+				}
+			}
+			if c.Bool("remove-volume") {
+				container.RemoveVolumePrefix("zygote-")
+			}
+			return nil
+		},
+	}
+}
+
+func runCommand() *cli.Command {
+	logger, err := util.Logger()
+	if err != nil {
+		panic(err)
+	}
+	return &cli.Command{
+		Name:  "run",
+		Usage: "Run the application",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "init",
+				Usage: "Remove volumes associated with the containers",
+			},
+			&cli.StringFlag{
+				Name:    "directory",
+				Aliases: []string{"C"},
+				Value:   "sqls",
+				Usage:   "Directory containing the SQL migration files.",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			for _, v := range container.List() {
+				if strings.HasPrefix(v.Name, "/zygote-") {
+					container.RemoveContainer(v.ID)
+				}
+			}
+			if c.Bool("init") {
+				container.RemoveVolumePrefix("zygote-")
+			}
+			err := initContainers(context.Background(), logger, c.String("directory"))
+			return err
+		},
+	}
+}
+
+func certCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "cert",
+		Usage: "Certificate management",
+		Subcommands: []*cli.Command{
+			{
+				Name:  "root",
+				Usage: "Create a self-signed certificate or validate an existing one",
+				Flags: []cli.Flag{
+					&cli.Int64Flag{
+						Name:    "days",
+						Value:   365,
+						Aliases: []string{"c"},
+						Usage:   "Number of days the certificate is valid for",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					cs, err := cert.Cert()
+					if err != nil {
+						return err
+					}
+					return cs.MakeRootCert(time.Now().AddDate(0, 0, c.Int("days")))
+				},
+			},
+			{
+				Name:  "sign",
+				Usage: "Sign a certificate",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "name",
+						Aliases: []string{"n"},
+						Usage:   "Domain address",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					cs, err := cert.Cert()
+					if err != nil {
+						return err
+					}
+
+					if c.String("name") == "" {
+						return fmt.Errorf("name is required")
+					}
+
+					return cs.Sign([]string{c.String("name")}, time.Now().AddDate(1, 0, 0))
+				},
+			},
+		},
+	}
+}
+
+func callCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "call",
+		Usage: "Certificate management",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "url",
+				Aliases: []string{"u"},
+				Usage:   "URL to call",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			u := c.String("url")
+			client, err := Call()
+			if err != nil {
+				return err
+			}
+			r, err := client.R().Get(u)
+			if err != nil {
+				return err
+			}
+			fmt.Print(r.String())
+			return nil
+		},
+	}
+}
+
 func main() {
 	os.Setenv("EDITOR", editor)
+	err := utils.WriteScripts()
+	if err != nil {
+		panic(err)
+	}
+
 	logger, err := util.Logger()
 	if err != nil {
 		panic(err)
@@ -39,243 +384,19 @@ func main() {
 
 	app := &cli.App{
 		Action: func(_ *cli.Context) error {
-			return nil
+			return checkAction(nil)
 		},
 		Commands: []*cli.Command{
-			{
-				Name:  "vault",
-				Usage: "Encrypt and Decrypt secrets",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "encrypt",
-						Aliases: []string{"e"},
-						Usage:   "File to encrypt",
-					},
-					&cli.StringFlag{
-						Name:    "decrypt",
-						Aliases: []string{"d"},
-						Usage:   "File to decrypt",
-					},
-				},
-				Action: func(c *cli.Context) error {
-					if c.String("encrypt") != "" {
-						err := utils.EncryptFile(c.String("encrypt"), c.Args().Get(0))
-						if err != nil {
-							return err
-						}
-					} else if c.String("decrypt") != "" {
-						err := utils.DecryptFile(c.String("decrypt"))
-						if err != nil {
-							return err
-						}
-					}
-
-					return nil
-				},
-			},
-			{
-				Name:    "blueprint",
-				Aliases: []string{"x"},
-				Usage:   "Setup this machine with Blueprint. Upgrade the machine if it is alreadt been setup",
-				Action: func(_ *cli.Context) error {
-					currentDir, err := os.Getwd()
-					if err != nil {
-						return err
-					}
-					err = utils.Elevate()
-					if err != nil {
-						return err
-					}
-					err = utils.Chdir(fmt.Sprintf("%s/src/github.com/%s/blueprint", utils.UserHome(), utils.User()))
-					if err != nil {
-						return err
-					}
-					err = utils.Run("ansible-playbook", "-i", "inventory.py", "main.yaml")
-					if err != nil {
-						return err
-					}
-					err = utils.Chdir(currentDir)
-					if err != nil {
-						return err
-					}
-					err = utils.UnElevate()
-					if err != nil {
-						return err
-					}
-					return nil
-				},
-			},
-			{
-				Name:  "migrate",
-				Usage: "Manage database migrations. Allows you to apply or revert changes to the database schema.",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "directory",
-						Aliases: []string{"C"},
-						Value:   "sqls",
-						Usage:   "Directory containing the SQL migration files.",
-					},
-				},
-				Subcommands: []*cli.Command{
-					{
-						Name:  "up",
-						Usage: "Apply all pending migrations to update the database schema to the latest version.",
-						Action: func(c *cli.Context) error {
-							ctx := context.Background()
-							m := NewMigration(c.String("directory"))
-							return m.Up(ctx, logger)
-						},
-					},
-					{
-						Name:  "down",
-						Usage: "Revert the last applied migration to undo changes to the database schema.",
-						Action: func(c *cli.Context) error {
-							ctx := context.Background()
-							m := NewMigration(c.String("directory"))
-							return m.Down(ctx, logger)
-						},
-					},
-				},
-			},
-			{
-				Name:  "init",
-				Usage: "Initialize DB and Mem containers for a new project",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "directory",
-						Aliases: []string{"C"},
-						Value:   "sqls",
-						Usage:   "Directory containing the SQL migration files.",
-					},
-				},
-				Action: func(c *cli.Context) error {
-					ctx := context.Background()
-					err := initContainers(ctx, logger, c.String("directory"))
-					return err
-				},
-			},
-			{
-				Name:  "deinit",
-				Usage: "Clean up DB and Mem containers created by zygote",
-				Flags: []cli.Flag{
-					&cli.BoolFlag{
-						Name:    "remove-volume",
-						Aliases: []string{"v"},
-						Usage:   "Remove volumes associated with the containers",
-					},
-				},
-				Action: func(c *cli.Context) error {
-					for _, v := range container.List() {
-						if strings.HasPrefix(v.Name, "/zygote-") {
-							container.RemoveContainer(v.ID)
-						}
-					}
-					if c.Bool("remove-volume") {
-						container.RemoveVolumePrefix("zygote-")
-					}
-					return nil
-				},
-			},
-			{
-				Name:  "run",
-				Usage: "Run the application",
-				Flags: []cli.Flag{
-					&cli.BoolFlag{
-						Name:  "init",
-						Usage: "Remove volumes associated with the containers",
-					},
-					&cli.StringFlag{
-						Name:    "directory",
-						Aliases: []string{"C"},
-						Value:   "sqls",
-						Usage:   "Directory containing the SQL migration files.",
-					},
-				},
-				Action: func(c *cli.Context) error {
-					for _, v := range container.List() {
-						if strings.HasPrefix(v.Name, "/zygote-") {
-							container.RemoveContainer(v.ID)
-						}
-					}
-					if c.Bool("init") {
-						container.RemoveVolumePrefix("zygote-")
-					}
-					err := initContainers(context.Background(), logger, c.String("directory"))
-					return err
-				},
-			},
-			{
-				Name:  "cert",
-				Usage: "Certificate management",
-				Subcommands: []*cli.Command{
-					{
-						Name:  "root",
-						Usage: "Create a self-signed certificate or validate an existing one",
-						Flags: []cli.Flag{
-							&cli.Int64Flag{
-								Name:    "days",
-								Value:   365,
-								Aliases: []string{"c"},
-								Usage:   "Number of days the certificate is valid for",
-							},
-						},
-						Action: func(c *cli.Context) error {
-							cs, err := cert.Cert()
-							if err != nil {
-								return err
-							}
-							return cs.MakeRootCert(time.Now().AddDate(0, 0, c.Int("days")))
-						},
-					},
-					{
-						Name:  "sign",
-						Usage: "Sign a certificate",
-						Flags: []cli.Flag{
-							&cli.StringFlag{
-								Name:    "name",
-								Aliases: []string{"n"},
-								Usage:   "Domain address",
-							},
-						},
-						Action: func(c *cli.Context) error {
-							cs, err := cert.Cert()
-							if err != nil {
-								return err
-							}
-
-							if c.String("name") == "" {
-								return fmt.Errorf("name is required")
-							}
-
-							return cs.Sign([]string{c.String("name")}, time.Now().AddDate(1, 0, 0))
-						},
-					},
-				},
-			},
-			{
-				Name:  "call",
-				Usage: "Certificate management",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "url",
-						Aliases: []string{"u"},
-						Usage:   "URL to call",
-					},
-				},
-				Action: func(c *cli.Context) error {
-					u := c.String("url")
-					client, err := Call()
-					if err != nil {
-						return err
-					}
-					r, err := client.R().Get(u)
-					if err != nil {
-						return err
-					}
-					fmt.Print(r.String())
-					return nil
-				},
-			},
+			vaultCommand(),
+			blueprintCommand(),
+			buildCommand(),
+			checkCommand(),
+			migrateCommand(),
+			initCommand(),
+			deinitCommand(),
+			runCommand(),
+			certCommand(),
+			callCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {

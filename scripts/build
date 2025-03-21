@@ -16,7 +16,6 @@ TARGETS=(
     "windows/arm64"
 )
 
-# Iterate over target OS/Arch and build binaries
 for TARGET in "${TARGETS[@]}"; do
     OS=$(echo $TARGET | cut -d '/' -f 1)
     ARCH=$(echo $TARGET | cut -d '/' -f 2)
