@@ -5,8 +5,8 @@
   vars:
     func_name: zygote
     z_binaries:
-      - path: "{{zygote_controller_binary_file }}"
-        url: "{{ zygote_controller_url }}"
+      - path: "{{ zcore_binary_file }}"
+        url: "{{ zcore_url }}"
         privileged_ports: true
 
 - name: Add Systemd service
@@ -15,4 +15,4 @@
   vars:
     func_name: zygote
     func_home: /var/lib/zygote
-    func_bin_file: /usr/local/bin/zygote_controller
+    func_bin_file: /usr/local/bin/zcore
