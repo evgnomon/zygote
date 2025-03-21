@@ -1,5 +1,5 @@
 ---
-- name: Ensure Zygote Controller on localhost
+- name: Ensure ZCore on localhost
   hosts:
     - localhost
   gather_facts: false
@@ -18,17 +18,17 @@
         ansible_python_interpreter: "{{ item.ansible_python_interpreter }}"
       with_items: "{{ hosts[z_env_name] if z_env_name in hosts else hosts['default'] }}"
 
-- name: Ensure Zygote Controller on localhost
+- name: Ensure ZCore
   hosts:
     - localhost
   gather_facts: false
   roles:
-    - role: ensure_zygote_controller
+    - role: ensure_zcore
     - role: z_cert
       vars:
         func_name: "haproxy"
 
-- name: Ensure HAProxy on main
+- name: Ensure HAProxy
   hosts:
     - main
   gather_facts: false

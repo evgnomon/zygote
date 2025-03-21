@@ -19,5 +19,5 @@ z_arch: >-
 zygote_user: zygote
 zygote_bin_prefix: /usr/local/bin
 zygote_releases: https://github.com/evgnomon/zygote/releases
-zygote_controller_binary_file: "{{ zygote_bin_prefix }}/zygote_controller"
-zygote_controller_url: "{{ zygote_releases }}/download/v{{ zygote_version }}/zygote_controller-{{ z_os }}-{{ z_arch }}"
+zcore_binary_file: "{{ zygote_bin_prefix }}/zcore"
+zycore_url: "{{ zygote_releases }}/download/v{{ zygote_version }}/zcore-{{ z_os }}-{{ z_arch }}"
