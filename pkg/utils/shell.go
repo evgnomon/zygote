@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
@@ -319,4 +320,18 @@ func WriteScripts() error {
 		return fmt.Errorf("failed to write vault_pass script: %v", err)
 	}
 	return nil
+}
+
+func OpenURLInBrowser(url string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+	default: // Linux and others
+		cmd = exec.Command("xdg-open", url)
+	}
+
+	return cmd.Run()
 }

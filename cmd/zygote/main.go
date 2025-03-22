@@ -370,6 +370,36 @@ func callCommand() *cli.Command {
 	}
 }
 
+func openDiffs() *cli.Command {
+	return &cli.Command{
+		Name:  "diffs",
+		Usage: "Open diffs in the browser",
+		Action: func(_ *cli.Context) error {
+			return utils.OpenURLInBrowser("https://github.com/pulls")
+		},
+	}
+}
+
+func openActions() *cli.Command {
+	return &cli.Command{
+		Name:  "plays",
+		Usage: "Open playbook runs in the browser",
+		Action: func(_ *cli.Context) error {
+			repoDir, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("failed to get current directory: %w", err)
+			}
+			repoName := filepath.Base(repoDir)
+
+			orgDir := filepath.Dir(repoDir)
+			orgName := filepath.Base(orgDir)
+
+			url := fmt.Sprintf("https://github.com/%s/%s/actions", orgName, repoName)
+			return utils.OpenURLInBrowser(url)
+		},
+	}
+}
+
 func main() {
 	os.Setenv("EDITOR", editor)
 	err := utils.WriteScripts()
@@ -397,6 +427,8 @@ func main() {
 			runCommand(),
 			certCommand(),
 			callCommand(),
+			openDiffs(),
+			openActions(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
