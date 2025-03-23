@@ -421,6 +421,21 @@ func openActions() *cli.Command {
 	}
 }
 
+func sqlCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "sql",
+		Usage: "SQL shell to interact with the database",
+		Action: func(_ *cli.Context) error {
+			os.Setenv("MYSQL_PWD", "root1234")
+			err := utils.Run("mysql", "-u", "root", "-h", "127.0.0.1", "-s")
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+	}
+}
+
 func main() {
 	os.Setenv("EDITOR", editor)
 	err := utils.WriteScripts()
@@ -450,6 +465,7 @@ func main() {
 			callCommand(),
 			openDiffs(),
 			openActions(),
+			sqlCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {

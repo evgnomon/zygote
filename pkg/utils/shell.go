@@ -78,6 +78,7 @@ func RunWithOpts(opts RunOpts, argv ...string) error {
 	if !opts.SupressStdout {
 		cmd.Stdout = os.Stdout
 	}
+	cmd.Stdin = os.Stdin
 	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf("run %v failed: %v", argv, err)
