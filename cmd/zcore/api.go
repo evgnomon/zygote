@@ -18,7 +18,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load server certificate: %v", err)
 	}
-	domainName := "core.zygote"
+	domainName := "zygote"
 
 	if os.Getenv("ZCORE_DOMAIN") != "" {
 		domainName = os.Getenv("ZCORE_DOMAIN")

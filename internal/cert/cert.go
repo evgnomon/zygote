@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/evgnomon/zygote/pkg/utils"
 )
 
 const certDirPermission = 0700
@@ -75,6 +77,16 @@ func (c *CertService) FunctionKeyFile(name string) string {
 }
 
 func (c *CertService) MakeRootCert(expiresAt time.Time) error {
+	perFilePath := filepath.Join(c.CaCertDir(), "ca_key.pem")
+	certExist, err := utils.PathExists(perFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to check if file exists: %v", err)
+	}
+	if certExist {
+		fmt.Printf("root already exists: %s\n", perFilePath)
+		return nil
+	}
+
 	caPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return err
@@ -111,7 +123,7 @@ func (c *CertService) MakeRootCert(expiresAt time.Time) error {
 	}
 	caCertOut.Close()
 
-	caKeyOut, err := os.Create(filepath.Join(c.CaCertDir(), "ca_key.pem"))
+	caKeyOut, err := os.Create(perFilePath)
 	if err != nil {
 		return err
 	}
@@ -175,7 +187,8 @@ func (c *CertService) Sign(domainName []string, expiresAt time.Time) error {
 		return err
 	}
 
-	serverCertOut, err := os.Create(filepath.Join(c.FunctionsCertDir(domainName[0]), fmt.Sprintf("%s_cert.pem", domainName[0])))
+	pubFilePath := filepath.Join(c.FunctionsCertDir(domainName[0]), fmt.Sprintf("%s_cert.pem", domainName[0]))
+	serverCertOut, err := os.Create(pubFilePath)
 	if err != nil {
 		return err
 	}
@@ -184,8 +197,9 @@ func (c *CertService) Sign(domainName []string, expiresAt time.Time) error {
 		return err
 	}
 	serverCertOut.Close()
+	keyFilePath := filepath.Join(c.FunctionsCertDir(domainName[0]), fmt.Sprintf("%s_key.pem", domainName[0]))
 
-	serverKeyOut, err := os.Create(filepath.Join(c.FunctionsCertDir(domainName[0]), fmt.Sprintf("%s_key.pem", domainName[0])))
+	serverKeyOut, err := os.Create(keyFilePath)
 	if err != nil {
 		return err
 	}
@@ -198,6 +212,12 @@ func (c *CertService) Sign(domainName []string, expiresAt time.Time) error {
 		return err
 	}
 	serverKeyOut.Close()
+
+	p12FilePath := filepath.Join(c.FunctionsCertDir(domainName[0]), fmt.Sprintf("%s.p12", domainName[0]))
+	err = utils.Run("openssl", "pkcs12", "-export", "-in", pubFilePath, "-inkey", keyFilePath, "-out", p12FilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create p12 file: %v", err)
+	}
 
 	return nil
 }
