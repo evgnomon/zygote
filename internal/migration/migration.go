@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/mysql"
 	"go.uber.org/zap"
@@ -17,6 +18,13 @@ type Migration struct {
 }
 
 func (m *Migration) Up(_ context.Context, logger *zap.Logger) error {
+	sqlDirExists, err := utils.PathExists(m.Directory)
+	if err != nil {
+		return fmt.Errorf("failed to check if directory exists: %w", err)
+	}
+	if !sqlDirExists {
+		return nil
+	}
 	logger.Info("migrations up start")
 	for shardID := 0; shardID < 2; shardID++ {
 		db, err := connect(shardID)
@@ -40,6 +48,13 @@ func (m *Migration) Up(_ context.Context, logger *zap.Logger) error {
 }
 
 func (m *Migration) Down(_ context.Context, logger *zap.Logger) error {
+	sqlDirExists, err := utils.PathExists(m.Directory)
+	if err != nil {
+		return fmt.Errorf("failed to check if directory exists: %w", err)
+	}
+	if !sqlDirExists {
+		return nil
+	}
 	logger.Info("migrations down start")
 	for shardID := 0; shardID < 2; shardID++ {
 		db, err := connect(shardID)

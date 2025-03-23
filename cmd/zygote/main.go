@@ -174,6 +174,7 @@ func migrateCommand() *cli.Command {
 	if err != nil {
 		panic(err)
 	}
+
 	return &cli.Command{
 		Name:  "migrate",
 		Usage: "Manage database migrations. Allows you to apply or revert changes to the database schema.",
@@ -184,6 +185,20 @@ func migrateCommand() *cli.Command {
 				Value:   "sqls",
 				Usage:   "Directory containing the SQL migration files.",
 			},
+		},
+		Action: func(c *cli.Context) error {
+			dir := c.String("directory")
+			if dir == "" {
+				dir = "sqls"
+			}
+			sqlDirExists, err := utils.PathExists(dir)
+			if err != nil {
+				return fmt.Errorf("failed to check if directory exists: %w", err)
+			}
+			if !sqlDirExists {
+				return nil
+			}
+			return nil
 		},
 		Subcommands: []*cli.Command{
 			{
@@ -215,13 +230,19 @@ func initCommand() *cli.Command {
 	}
 	return &cli.Command{
 		Name:  "init",
-		Usage: "Initialize DB and Mem containers for a new project",
+		Usage: "Initialize resources for the current repo",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "directory",
 				Aliases: []string{"C"},
 				Value:   "sqls",
 				Usage:   "Directory containing the SQL migration files.",
+			},
+			&cli.BoolFlag{
+				Name:    "local",
+				Aliases: []string{"l"},
+				Value:   true,
+				Usage:   "Initialize resources using a local instance of Zygote core",
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -235,7 +256,7 @@ func initCommand() *cli.Command {
 func deinitCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "deinit",
-		Usage: "Clean up DB and Mem containers created by zygote",
+		Usage: "Release resources associated with the current repo",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "remove-volume",
@@ -346,7 +367,7 @@ func certCommand() *cli.Command {
 func callCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "call",
-		Usage: "Certificate management",
+		Usage: "Call a URL using a client certificate",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "url",

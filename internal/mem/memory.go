@@ -7,6 +7,7 @@ import (
 
 	dcontainer "github.com/docker/docker/api/types/container"
 	dnet "github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
 	"github.com/evgnomon/zygote/internal/container"
 	_ "github.com/go-sql-driver/mysql"
@@ -61,8 +62,13 @@ func CreateMemContainer(numShards int, networkName string) {
 		}
 
 		container.Pull(ctx, redisImage)
-		resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, fmt.Sprintf("zygote-mem-shard-%d", i))
+		containerName := fmt.Sprintf("zygote-mem-shard-%d", i)
+		resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
 		if err != nil {
+			if errdefs.IsConflict(err) {
+				fmt.Printf("Container already exists: %s\n", containerName)
+				return
+			}
 			panic(err)
 		}
 
