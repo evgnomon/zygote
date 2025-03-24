@@ -427,11 +427,51 @@ func sqlCommand() *cli.Command {
 		Usage: "SQL shell to interact with the database",
 		Action: func(_ *cli.Context) error {
 			os.Setenv("MYSQL_PWD", "root1234")
-			err := utils.Run("mysql", "-u", "root", "-h", "127.0.0.1", "-s")
+			err := utils.Run("mysql", "-u", "root", "-h", "127.0.0.1", "-s", "--auto-rehash")
 			if err != nil {
 				return err
 			}
 			return nil
+		},
+	}
+}
+
+func generateCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "generate",
+		Usage:   "Generate source files",
+		Aliases: []string{"gen"},
+		Subcommands: []*cli.Command{
+			{
+				Name:  "db",
+				Usage: "Create a database",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "name",
+						Aliases: []string{"n"},
+						Usage:   "Name of the database",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					dbName := c.String("name")
+					if dbName == "" {
+						name, err := utils.RepoFullName()
+						dbName = name
+						if err != nil {
+							return fmt.Errorf("failed to get repo full name: %w", err)
+						}
+					}
+					m, err := db.CreateDatabase(dbName)
+					if err != nil {
+						return fmt.Errorf("failed to create database: %w", err)
+					}
+					err = m.Save()
+					if err != nil {
+						return fmt.Errorf("failed to save model: %w", err)
+					}
+					return nil
+				},
+			},
 		},
 	}
 }
@@ -466,6 +506,7 @@ func main() {
 			openDiffs(),
 			openActions(),
 			sqlCommand(),
+			generateCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
@@ -481,10 +522,14 @@ func NewMigration(directory string) *migration.Migration {
 
 func initContainers(ctx context.Context, logger *zap.Logger, directory string) error {
 	numShards := 2
+	dbName, err := utils.RepoFullName()
+	if err != nil {
+		return fmt.Errorf("failed to get repo full name: %w", err)
+	}
 	for i := 1; i <= numShards; i++ {
 		sqlParams := container.SQLInitParams{
-			DBName:   fmt.Sprintf("myproject_%d", i),
-			Username: fmt.Sprintf("test_%d", i),
+			DBName:   fmt.Sprintf("%s_%d", dbName, i),
+			Username: "admin",
 			Password: "password",
 		}
 		sqlStatements, err := container.SQLInit(sqlParams)

@@ -149,12 +149,14 @@ func connect(shard int) (*sql.DB, error) {
 			return nil, fmt.Errorf("dbMigrate strconv.Atoi: %w", err)
 		}
 	}
+	dbName, err := utils.RepoFullName()
+	if err != nil {
+		return nil, fmt.Errorf("dbMigrate RepoFullName: %w", err)
+	}
 	db, err := sql.Open(
 		"mysql",
-		fmt.Sprintf("test_%[1]d:password@tcp(%[3]s:%[2]d)/myproject_%[1]d?multiStatements=true",
-			shard+1,
-			shardPort,
-			shardHost),
+		fmt.Sprintf("admin:password@tcp(%[3]s:%[2]d)/%[4]s_%[1]d?multiStatements=true",
+			shard+1, shardPort, shardHost, dbName),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dbMigrate open: %w", err)

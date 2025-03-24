@@ -1,8 +1,14 @@
 package db
 
 import (
+	"bytes"
 	"context"
+	"embed"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"text/template"
 	"time"
 
 	dcontainer "github.com/docker/docker/api/types/container"
@@ -10,9 +16,14 @@ import (
 	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
 	"github.com/evgnomon/zygote/internal/container"
+	"github.com/evgnomon/zygote/pkg/utils"
 )
 
+//go:embed templates/*.sql
+var templates embed.FS
+
 const mysqlImage = "mysql:8.0.33"
+const plainFilePermission = 064
 
 func CreateDBContainer(numShards int, networkName string) {
 	ctx := context.Background()
@@ -23,6 +34,11 @@ func CreateDBContainer(numShards int, networkName string) {
 
 	envVars := []string{
 		"MYSQL_ROOT_PASSWORD=root1234",
+	}
+
+	dbName, err := utils.RepoFullName()
+	if err != nil {
+		panic(err)
 	}
 
 	for i := 1; i <= numShards; i++ {
@@ -38,11 +54,11 @@ func CreateDBContainer(numShards int, networkName string) {
 					"-h",
 					"localhost",
 					"-u",
-					fmt.Sprintf("test_%d", i),
+					"admin",
 					"-ppassword",
 					"-e",
 					"SHOW tables;",
-					fmt.Sprintf("myproject_%d", i),
+					fmt.Sprintf("%s_%d", dbName, i),
 				},
 				Timeout:  20 * time.Second,
 				Retries:  20,
@@ -93,4 +109,89 @@ func CreateDBContainer(numShards int, networkName string) {
 			panic(err)
 		}
 	}
+}
+
+type SQLMigration struct {
+	Name string
+	Up   string
+	Down string
+}
+
+func (m *SQLMigration) Save() error {
+	const dir = "sqls"
+
+	// Ensure the directory exists.
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		return err
+	}
+
+	// Count existing up migration files (ending with ".up.sql").
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	count := 0
+	for _, f := range files {
+		if strings.HasSuffix(f.Name(), ".up.sql") {
+			count++
+		}
+	}
+
+	timestamp := time.Now().UTC().Format("20060102_150405")
+	prefix := fmt.Sprintf("%s_%s_", timestamp, "create_db")
+	upFileName := filepath.Join(dir, prefix+m.Name+".up.sql")
+	downFileName := filepath.Join(dir, prefix+m.Name+".down.sql")
+
+	// Write the migration files.
+	if err := os.WriteFile(upFileName, []byte(m.Up), plainFilePermission); err != nil { // #nosec
+		return err
+	}
+	if err := os.WriteFile(downFileName, []byte(m.Down), plainFilePermission); err != nil { // #nosec
+		return err
+	}
+
+	return nil
+}
+
+func CreateDatabase(name string) (*SQLMigration, error) {
+	upTemplate, err := templates.ReadFile("templates/create_db_up.sql")
+	if err != nil {
+		return nil, err
+	}
+
+	downTemplate, err := templates.ReadFile("templates/create_db_down.sql")
+	if err != nil {
+		return nil, err
+	}
+
+	tmplUp := string(upTemplate)
+	tmplDown := string(downTemplate)
+
+	tUp, err := template.New("create_db_up.sql").Parse(tmplUp)
+	if err != nil {
+		return nil, err
+	}
+
+	tDown, err := template.New("create_db_down.sql").Parse(tmplDown)
+	if err != nil {
+		return nil, err
+	}
+
+	var tplUp bytes.Buffer
+	if err := tUp.Execute(&tplUp, struct{ DatabaseName string }{DatabaseName: name}); err != nil {
+		return nil, err
+	}
+
+	var tplDown bytes.Buffer
+	if err := tDown.Execute(&tplDown, struct{ DatabaseName string }{DatabaseName: name}); err != nil {
+		return nil, err
+	}
+
+	result := &SQLMigration{
+		Name: name,
+		Up:   strings.Trim(tplUp.String(), "\n"),
+		Down: strings.Trim(tplDown.String(), "\n"),
+	}
+
+	return result, nil
 }

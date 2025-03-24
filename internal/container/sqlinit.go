@@ -13,11 +13,11 @@ type SQLInitParams struct {
 	Password string
 }
 
-//go:embed templates/sql_init_template.sql
-var content embed.FS
+//go:embed templates/*.sql
+var templates embed.FS
 
 func SQLInit(params SQLInitParams) (string, error) {
-	data, err := content.ReadFile("templates/sql_init_template.sql")
+	data, err := templates.ReadFile("templates/sql_init_template.sql")
 
 	if err != nil {
 		return "", err

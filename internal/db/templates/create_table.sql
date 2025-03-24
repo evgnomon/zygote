@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS  {{ .TableName }} (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    data JSON NOT NULL,
+);
