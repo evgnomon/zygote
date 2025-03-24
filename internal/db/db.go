@@ -59,7 +59,7 @@ func CreateDBContainer(numShards int, networkName string) {
 					"-ppassword",
 					"-e",
 					"SHOW tables;",
-					fmt.Sprintf("%s_%d", dbName, i),
+					dbName,
 				},
 				Timeout:  20 * time.Second,
 				Retries:  20,

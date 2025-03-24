@@ -568,7 +568,7 @@ func initContainers(ctx context.Context, logger *zap.Logger, directory string) e
 	}
 	for i := 1; i <= numShards; i++ {
 		sqlParams := container.SQLInitParams{
-			DBName:   fmt.Sprintf("%s_%d", dbName, i),
+			DBName:   dbName,
 			Username: "admin",
 			Password: "password",
 		}

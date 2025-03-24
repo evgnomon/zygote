@@ -155,8 +155,8 @@ func connect(shard int) (*sql.DB, error) {
 	}
 	db, err := sql.Open(
 		"mysql",
-		fmt.Sprintf("admin:password@tcp(%[3]s:%[2]d)/%[4]s_%[1]d?multiStatements=true",
-			shard+1, shardPort, shardHost, dbName),
+		fmt.Sprintf("admin:password@tcp(%[2]s:%[1]d)/%[3]s?multiStatements=true",
+			shardPort, shardHost, dbName),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dbMigrate open: %w", err)
