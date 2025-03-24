@@ -472,6 +472,46 @@ func generateCommand() *cli.Command {
 					return nil
 				},
 			},
+			{
+				Name:  "table",
+				Usage: "Create a table",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "name",
+						Aliases:  []string{"n"},
+						Usage:    "Name of the table",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:  "db",
+						Usage: "Name of the database",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					tableName := c.String("name")
+					if tableName == "" {
+						return fmt.Errorf("name is required")
+					}
+					dbName := c.String("db")
+					if dbName == "" {
+						name, err := utils.RepoFullName()
+						dbName = name
+						if err != nil {
+							return fmt.Errorf("failed to get repo full name: %w", err)
+						}
+					}
+
+					m, err := db.CreateTable(dbName, tableName)
+					if err != nil {
+						return fmt.Errorf("failed to create table: %w", err)
+					}
+					err = m.Save()
+					if err != nil {
+						return fmt.Errorf("failed to save model: %w", err)
+					}
+					return nil
+				},
+			},
 		},
 	}
 }
@@ -548,14 +588,12 @@ func initContainers(ctx context.Context, logger *zap.Logger, directory string) e
 }
 
 func Call() (*resty.Client, error) {
-	// Get the certificate service
 	cs, err := cert.Cert()
 	if err != nil {
 		log.Fatalf("Failed to create cert service: %v", err)
 	}
 
 	clientName := "brave"
-
 	clientCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(clientName), cs.FunctionKeyFile(clientName))
 	if err != nil {
 		return nil, err

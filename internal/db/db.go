@@ -23,7 +23,8 @@ import (
 var templates embed.FS
 
 const mysqlImage = "mysql:8.0.33"
-const plainFilePermission = 064
+const plainFilePermission = 0644
+const sqlsDir = "sqls"
 
 func CreateDBContainer(numShards int, networkName string) {
 	ctx := context.Background()
@@ -112,37 +113,20 @@ func CreateDBContainer(numShards int, networkName string) {
 }
 
 type SQLMigration struct {
-	Name string
+	Desc string
 	Up   string
 	Down string
 }
 
 func (m *SQLMigration) Save() error {
-	const dir = "sqls"
-
-	// Ensure the directory exists.
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+	if err := os.MkdirAll(sqlsDir, os.ModePerm); err != nil {
 		return err
 	}
+	timestamp := time.Now().UTC().Format("20060102150405")
+	prefix := fmt.Sprintf("%s_%s_", timestamp, m.Desc)
+	upFileName := filepath.Join(sqlsDir, prefix+".up.sql")
+	downFileName := filepath.Join(sqlsDir, prefix+".down.sql")
 
-	// Count existing up migration files (ending with ".up.sql").
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	count := 0
-	for _, f := range files {
-		if strings.HasSuffix(f.Name(), ".up.sql") {
-			count++
-		}
-	}
-
-	timestamp := time.Now().UTC().Format("20060102_150405")
-	prefix := fmt.Sprintf("%s_%s_", timestamp, "create_db")
-	upFileName := filepath.Join(dir, prefix+m.Name+".up.sql")
-	downFileName := filepath.Join(dir, prefix+m.Name+".down.sql")
-
-	// Write the migration files.
 	if err := os.WriteFile(upFileName, []byte(m.Up), plainFilePermission); err != nil { // #nosec
 		return err
 	}
@@ -153,45 +137,77 @@ func (m *SQLMigration) Save() error {
 	return nil
 }
 
-func CreateDatabase(name string) (*SQLMigration, error) {
+func CreateDatabase(dbName string) (*SQLMigration, error) {
 	upTemplate, err := templates.ReadFile("templates/create_db_up.sql")
 	if err != nil {
 		return nil, err
 	}
-
 	downTemplate, err := templates.ReadFile("templates/create_db_down.sql")
 	if err != nil {
 		return nil, err
 	}
-
 	tmplUp := string(upTemplate)
 	tmplDown := string(downTemplate)
-
 	tUp, err := template.New("create_db_up.sql").Parse(tmplUp)
 	if err != nil {
 		return nil, err
 	}
-
 	tDown, err := template.New("create_db_down.sql").Parse(tmplDown)
 	if err != nil {
 		return nil, err
 	}
-
 	var tplUp bytes.Buffer
-	if err := tUp.Execute(&tplUp, struct{ DatabaseName string }{DatabaseName: name}); err != nil {
+	if err := tUp.Execute(&tplUp, struct{ DatabaseName string }{DatabaseName: dbName}); err != nil {
 		return nil, err
 	}
-
 	var tplDown bytes.Buffer
-	if err := tDown.Execute(&tplDown, struct{ DatabaseName string }{DatabaseName: name}); err != nil {
+	if err := tDown.Execute(&tplDown, struct{ DatabaseName string }{DatabaseName: dbName}); err != nil {
 		return nil, err
 	}
-
 	result := &SQLMigration{
-		Name: name,
+		Desc: fmt.Sprintf("create_db_%s", dbName),
 		Up:   strings.Trim(tplUp.String(), "\n"),
 		Down: strings.Trim(tplDown.String(), "\n"),
 	}
+	return result, nil
+}
 
+type CreateTableParams struct {
+	TableName    string
+	DatabaseName string
+}
+
+func CreateTable(dbName, tableName string) (*SQLMigration, error) {
+	upTemplate, err := templates.ReadFile("templates/create_table_up.sql")
+	if err != nil {
+		return nil, err
+	}
+	downTemplate, err := templates.ReadFile("templates/create_table_down.sql")
+	if err != nil {
+		return nil, err
+	}
+	tmplUp := string(upTemplate)
+	tmplDown := string(downTemplate)
+	tUp, err := template.New("create_table_up.sql").Parse(tmplUp)
+	if err != nil {
+		return nil, err
+	}
+	tDown, err := template.New("create_table_down.sql").Parse(tmplDown)
+	if err != nil {
+		return nil, err
+	}
+	var tplUp bytes.Buffer
+	if err := tUp.Execute(&tplUp, &CreateTableParams{TableName: tableName, DatabaseName: dbName}); err != nil {
+		return nil, err
+	}
+	var tplDown bytes.Buffer
+	if err := tDown.Execute(&tplDown, &CreateTableParams{TableName: tableName, DatabaseName: dbName}); err != nil {
+		return nil, err
+	}
+	result := &SQLMigration{
+		Desc: fmt.Sprintf("create_table_%s_%s", dbName, tableName),
+		Up:   strings.Trim(tplUp.String(), "\n"),
+		Down: strings.Trim(tplDown.String(), "\n"),
+	}
 	return result, nil
 }
