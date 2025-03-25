@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -17,6 +18,8 @@ import (
 
 //go:embed scripts/vault_pass
 var vaultPassScript string
+
+var pattern = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_$]{0,63}$`)
 
 type VaultConfig struct {
 	DefaultKey string `toml:"default_key"`
@@ -109,6 +112,16 @@ func RunCapture(argv ...string) (string, error) {
 		return "", fmt.Errorf("run %v failed: %v", argv, err)
 	}
 	return string(output), nil
+}
+
+func Script(commands [][]string) error {
+	for _, cmd := range commands {
+		err := Run(cmd...)
+		if err != nil {
+			return fmt.Errorf("failed to running command: %w", err)
+		}
+	}
+	return nil
 }
 
 func PathExists(path string) (bool, error) {
@@ -271,7 +284,17 @@ func RepoFullName() (string, error) {
 	}
 	org := filepath.Base(filepath.Dir(repoPath))
 	repo := filepath.Base(repoPath)
+	if err != nil {
+		fmt.Println("Invalid pattern:", err)
+		return "", fmt.Errorf("error compiling pattern: %v", err)
+	}
+
 	formatted := fmt.Sprintf("%s_%s", org, repo)
+
+	if !pattern.MatchString(formatted) {
+		return "", fmt.Errorf("invalid repo name: %s", formatted)
+	}
+
 	return formatted, nil
 }
 

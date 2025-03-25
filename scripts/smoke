@@ -1,0 +1,40 @@
+#!/bin/sh
+
+go build ./cmd/zygote
+
+Z=$(pwd)/zygote
+
+mkdir /tmp/smoker && cd /tmp/smoker
+
+sudo $Z deinit -v
+rm -rf ./sqls
+sudo $Z init
+
+$Z gen db --name smokers
+
+$Z gen table --name users
+$Z gen table --name posts
+$Z gen table --name comments
+
+# user table
+$Z gen col --table users --name name
+$Z gen col --table users --name email  --type string
+$Z gen col --table users --name active --type bool
+$Z gen col --table users --name pic    --type binary
+$Z gen col --table users --name age    --type double
+
+# posts table
+$Z gen col --table posts --name title
+$Z gen col --table posts --name uuid     --type uuid
+$Z gen col --table posts --name content  --type text
+$Z gen col --table posts --name views    --type integer
+$Z gen col --table posts --name tags     --type json
+
+$Z migrate up
+$Z migrate down
+$Z migrate up
+$Z migrate down
+$Z migrate up
+
+cd -
+rm -rf /tmp/smoker

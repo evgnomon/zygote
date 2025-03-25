@@ -30,6 +30,8 @@ import (
 const containerStartTimeout = 20 * time.Second
 const httpClientTimeout = 10 * time.Second
 const editor = "vi"
+const varChar255 = "VARCHAR(255)"
+const dirPerm = 0755
 
 func vaultCommand() *cli.Command {
 	return &cli.Command{
@@ -512,6 +514,172 @@ func generateCommand() *cli.Command {
 					return nil
 				},
 			},
+			{
+				Name:    "column",
+				Aliases: []string{"col"},
+				Usage:   "Create a column",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "name",
+						Aliases:  []string{"n"},
+						Usage:    "Name of the column",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:  "db",
+						Usage: "Name of the database",
+					},
+					&cli.StringFlag{
+						Name:     "table",
+						Usage:    "Name of the table",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:  "type",
+						Usage: "Column type: string, integer, double, bool, binary, json, text, uuid",
+						Value: "string",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					colName := c.String("name")
+					if colName == "" {
+						return fmt.Errorf("name is required")
+					}
+
+					tableName := c.String("table")
+					if tableName == "" {
+						return fmt.Errorf("table is required")
+					}
+
+					dbName := c.String("db")
+					if dbName == "" {
+						name, err := utils.RepoFullName()
+						dbName = name
+						if err != nil {
+							return fmt.Errorf("failed to get repo full name: %w", err)
+						}
+					}
+
+					colType := c.String("type")
+					if colType == "" {
+						colType = "string"
+					}
+
+					var sqlCol string
+					switch colType {
+					case "string":
+						sqlCol = varChar255
+					case "integer":
+						sqlCol = "INT"
+					case "double":
+						sqlCol = "DOUBLE"
+					case "bool":
+						sqlCol = "BOOLEAN"
+					case "binary":
+						sqlCol = "MEDIUMBLOB"
+					case "json":
+						sqlCol = "JSON"
+					case "uuid":
+						sqlCol = "CHAR(36)"
+					case "text":
+						sqlCol = "MEDIUMTEXT"
+					default:
+						sqlCol = varChar255
+					}
+
+					m, err := db.CreateColumn(dbName, tableName, colName, sqlCol)
+					if err != nil {
+						return fmt.Errorf("failed to create column: %w", err)
+					}
+					err = m.Save()
+					if err != nil {
+						return fmt.Errorf("failed to save model: %w", err)
+					}
+					return nil
+				},
+			},
+		},
+	}
+}
+
+func buildZygote() error {
+	err := utils.Run("go", "build", "./cmd/zygote")
+	if err != nil {
+		return fmt.Errorf("failed to build zygote: %w", err)
+	}
+	return nil
+}
+
+func smokerCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "dude",
+		Usage: "Run smoke tests",
+		Action: func(_ *cli.Context) error {
+			err := buildZygote()
+			if err != nil {
+				return fmt.Errorf("failed to build zygote: %w", err)
+			}
+
+			zygotePath := filepath.Join(os.Getenv("PWD"), "zygote")
+
+			// Create temporary directory and change to it
+			tempDir := "/tmp/smoker"
+			err = os.Mkdir(tempDir, dirPerm)
+			if err != nil {
+				return fmt.Errorf("failed to create /tmp/smoker: %w", err)
+			}
+			defer os.RemoveAll(tempDir) // Clean up at the end
+
+			err = os.Chdir(tempDir)
+			if err != nil {
+				return fmt.Errorf("failed to change to /tmp/smoker: %w", err)
+			}
+
+			defer func() {
+				// Change back to original directory
+				err = os.Chdir(os.Getenv("PWD"))
+				if err != nil {
+					panic(fmt.Errorf("failed to change back to original directory: %w", err))
+				}
+			}()
+
+			defer func() {
+				err = utils.Script([][]string{[]string{"sudo", zygotePath, "deinit", "-v"}}) //nolint:gofmt
+				if err != nil {
+					panic(fmt.Errorf("failed to run smoke tests: %w", err))
+				}
+			}()
+			err = utils.Script([][]string{
+				[]string{"rm", "-rf", "./sqls"}, //nolint:gofmt
+				[]string{"sudo", zygotePath, "deinit", "-v"},
+				[]string{"sudo", zygotePath, "init"},
+				[]string{"sudo", "-K"},
+				[]string{zygotePath, "gen", "db", "--name", "smokers"},
+				[]string{zygotePath, "gen", "table", "--name", "users"},
+				[]string{zygotePath, "gen", "table", "--name", "posts"},
+				[]string{zygotePath, "gen", "table", "--name", "comments"},
+				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "name"},
+				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "email", "--type", "string"},
+				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "active", "--type", "bool"},
+				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "pic", "--type", "binary"},
+				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "age", "--type", "double"},
+				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "title"},
+				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "uuid", "--type", "uuid"},
+				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "content", "--type", "text"},
+				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "views", "--type", "integer"},
+				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "tags", "--type", "json"},
+				[]string{zygotePath, "migrate", "up"},
+				[]string{zygotePath, "migrate", "down"},
+				[]string{zygotePath, "migrate", "up"},
+				[]string{zygotePath, "migrate", "down"},
+				[]string{zygotePath, "migrate", "up"},
+			})
+
+			if err != nil {
+				return fmt.Errorf("failed to run smoke tests: %w", err)
+			}
+
+			return nil
 		},
 	}
 }
@@ -547,6 +715,7 @@ func main() {
 			openActions(),
 			sqlCommand(),
 			generateCommand(),
+			smokerCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {

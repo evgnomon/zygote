@@ -122,8 +122,9 @@ func (m *SQLMigration) Save() error {
 	if err := os.MkdirAll(sqlsDir, os.ModePerm); err != nil {
 		return err
 	}
-	timestamp := time.Now().UTC().Format("20060102150405")
-	prefix := fmt.Sprintf("%s_%s_", timestamp, m.Desc)
+	current := time.Now().UTC()
+	nano := current.UnixNano()
+	prefix := fmt.Sprintf("%d_%s", nano, m.Desc)
 	upFileName := filepath.Join(sqlsDir, prefix+".up.sql")
 	downFileName := filepath.Join(sqlsDir, prefix+".down.sql")
 
@@ -206,6 +207,70 @@ func CreateTable(dbName, tableName string) (*SQLMigration, error) {
 	}
 	result := &SQLMigration{
 		Desc: fmt.Sprintf("create_table_%s_%s", dbName, tableName),
+		Up:   strings.Trim(tplUp.String(), "\n"),
+		Down: strings.Trim(tplDown.String(), "\n"),
+	}
+	return result, nil
+}
+
+type CreateColumnParams struct {
+	TableName    string
+	DatabaseName string
+	SQLColType   string
+	ColumnName   string
+	DefaultValue string
+}
+
+func CreateColumn(dbName, tableName, name, sqlColType string) (*SQLMigration, error) {
+	upTemplate, err := templates.ReadFile("templates/create_column_up.sql")
+	if err != nil {
+		return nil, err
+	}
+	downTemplate, err := templates.ReadFile("templates/create_column_down.sql")
+	if err != nil {
+		return nil, err
+	}
+	tmplUp := string(upTemplate)
+	tmplDown := string(downTemplate)
+	tUp, err := template.New("create_column_up.sql").Parse(tmplUp)
+	if err != nil {
+		return nil, err
+	}
+	tDown, err := template.New("create_column_down.sql").Parse(tmplDown)
+	if err != nil {
+		return nil, err
+	}
+
+	var defaultValue string
+	switch sqlColType {
+	case "INT", "BIGINT":
+		defaultValue = "0"
+	case "FLOAT", "DOUBLE":
+		defaultValue = "0.0"
+	case "BOOLEAN":
+		defaultValue = "false"
+	case "MEDIUMBLOB":
+		defaultValue = "''"
+	case "JSON":
+		defaultValue = "NULL"
+	case "VARCHAR(255)", "MEDIUMTEXT", "CHAR(36)":
+		defaultValue = "''"
+	default:
+		return nil, fmt.Errorf("unsupported column type: %s", sqlColType)
+	}
+
+	var tplUp bytes.Buffer
+	params := &CreateColumnParams{TableName: tableName, DatabaseName: dbName,
+		ColumnName: name, SQLColType: sqlColType, DefaultValue: defaultValue}
+	if err := tUp.Execute(&tplUp, params); err != nil {
+		return nil, err
+	}
+	var tplDown bytes.Buffer
+	if err := tDown.Execute(&tplDown, params); err != nil {
+		return nil, err
+	}
+	result := &SQLMigration{
+		Desc: fmt.Sprintf("create_column_%s_%s_%s", dbName, tableName, name),
 		Up:   strings.Trim(tplUp.String(), "\n"),
 		Down: strings.Trim(tplDown.String(), "\n"),
 	}

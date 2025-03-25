@@ -15,3 +15,11 @@
     ./scripts/build
   args:
     chdir: "{{ workspace }}"
+
+- name: "Smoke"
+  tags:
+   - smoke
+  shell: |
+    ./scripts/smoke
+  args:
+    chdir: "{{ workspace }}"
