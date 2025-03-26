@@ -612,7 +612,7 @@ func buildZygote() error {
 
 func smokerCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "dude",
+		Name:  "smoke",
 		Usage: "Run smoke tests",
 		Action: func(_ *cli.Context) error {
 			err := buildZygote()
