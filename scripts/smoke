@@ -1,0 +1,6 @@
+#!/bin/bash
+
+set -e
+
+Z=$(pwd)/dist/z-$(go env GOOS)-$(go env GOARCH)
+$Z smoke
