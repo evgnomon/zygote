@@ -467,218 +467,322 @@ func sqlCol(colType string) string {
 	return sqlCol
 }
 
+func generateDBCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "db",
+		Usage: "Create a database",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "name",
+				Aliases: []string{"n"},
+				Usage:   "Name of the database",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			dbName := c.String("name")
+			if dbName == "" {
+				name, err := utils.RepoFullName()
+				dbName = name
+				if err != nil {
+					return fmt.Errorf("failed to get repo full name: %w", err)
+				}
+			}
+			m, err := db.CreateDatabase(dbName)
+			if err != nil {
+				return fmt.Errorf("failed to create database: %w", err)
+			}
+			err = m.Save()
+			if err != nil {
+				return fmt.Errorf("failed to save model: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+func generateTableCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "table",
+		Usage:   "Create a table",
+		Aliases: []string{"tab"},
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "name",
+				Aliases:  []string{"n"},
+				Usage:    "Name of the table",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:  "db",
+				Usage: "Name of the database",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			tableName := c.String("name")
+			if tableName == "" {
+				return fmt.Errorf("name is required")
+			}
+			dbName := c.String("db")
+			if dbName == "" {
+				name, err := utils.RepoFullName()
+				dbName = name
+				if err != nil {
+					return fmt.Errorf("failed to get repo full name: %w", err)
+				}
+			}
+
+			m, err := db.CreateTable(dbName, tableName)
+			if err != nil {
+				return fmt.Errorf("failed to create table: %w", err)
+			}
+			err = m.Save()
+			if err != nil {
+				return fmt.Errorf("failed to save model: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+func generateColCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "column",
+		Aliases: []string{"col"},
+		Usage:   "Create a column",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "name",
+				Aliases:  []string{"n"},
+				Usage:    "Name of the column",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:  "db",
+				Usage: "Name of the database",
+			},
+			&cli.StringFlag{
+				Name:     "table",
+				Usage:    "Name of the table",
+				Aliases:  []string{"t"},
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:  "type",
+				Usage: "Column type: string, integer, double, bool, binary, json, text, uuid",
+				Value: "string",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			colName := c.String("name")
+			if colName == "" {
+				return fmt.Errorf("name is required")
+			}
+
+			tableName := c.String("table")
+			if tableName == "" {
+				return fmt.Errorf("table is required")
+			}
+
+			dbName := c.String("db")
+			if dbName == "" {
+				name, err := utils.RepoFullName()
+				dbName = name
+				if err != nil {
+					return fmt.Errorf("failed to get repo full name: %w", err)
+				}
+			}
+
+			colType := c.String("type")
+			if colType == "" {
+				colType = "string"
+			}
+
+			m, err := db.CreateColumn(dbName, tableName, colName, sqlCol(colType))
+			if err != nil {
+				return fmt.Errorf("failed to create column: %w", err)
+			}
+			err = m.Save()
+			if err != nil {
+				return fmt.Errorf("failed to save model: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+func generatePropCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "property",
+		Aliases: []string{"prop"},
+		Usage:   "Extract a field out of a JSON and store it in a new column",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "name",
+				Aliases:  []string{"n"},
+				Usage:    "Name of the column",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "path",
+				Usage:    "Field path in the JSON",
+				Value:    "string",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "table",
+				Aliases:  []string{"t"},
+				Usage:    "Name of the table",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:  "db",
+				Usage: "Name of the database",
+			},
+			&cli.StringFlag{
+				Name:  "type",
+				Usage: "Column type: string, integer, double, bool, binary, json, text, uuid",
+				Value: "string",
+			},
+			&cli.BoolFlag{
+				Name:  "virtual",
+				Usage: "Name of the virtual property",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			colName := c.String("name")
+			if colName == "" {
+				return fmt.Errorf("name is required")
+			}
+
+			fieldPath := c.String("path")
+			if fieldPath == "" {
+				return fmt.Errorf("JSON field path is required")
+			}
+
+			tableName := c.String("table")
+			if tableName == "" {
+				return fmt.Errorf("table is required")
+			}
+
+			dbName := c.String("db")
+			if dbName == "" {
+				name, err := utils.RepoFullName()
+				dbName = name
+				if err != nil {
+					return fmt.Errorf("failed to get repo full name: %w", err)
+				}
+			}
+
+			m, err := db.CreateProperty(dbName, tableName, colName, fieldPath,
+				sqlCol(c.String("type")), c.Bool("virtual"))
+			if err != nil {
+				return fmt.Errorf("failed to create column: %w", err)
+			}
+			err = m.Save()
+			if err != nil {
+				return fmt.Errorf("failed to save model: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
+func generateIndexCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "index",
+		Usage: "Create an index",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:     "name",
+				Aliases:  []string{"n"},
+				Usage:    "Name of the index",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:     "table",
+				Aliases:  []string{"t"},
+				Usage:    "Name of the table",
+				Required: true,
+			},
+			&cli.StringSliceFlag{
+				Name:     "column",
+				Aliases:  []string{"col"},
+				Usage:    "Name of the column. Use more than once for multiple columns",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:  "db",
+				Usage: "Name of the database",
+			},
+			&cli.BoolFlag{
+				Name:    "unique",
+				Usage:   "Create a unique index",
+				Aliases: []string{"u"},
+			},
+			&cli.BoolFlag{
+				Name:  "full-text",
+				Usage: "Create a full text index",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			colName := c.String("name")
+			if colName == "" {
+				return fmt.Errorf("name is required")
+			}
+
+			tableName := c.String("table")
+			if tableName == "" {
+				return fmt.Errorf("table is required")
+			}
+
+			dbName := c.String("db")
+			if dbName == "" {
+				name, err := utils.RepoFullName()
+				dbName = name
+				if err != nil {
+					return fmt.Errorf("failed to get repo full name: %w", err)
+				}
+			}
+
+			if c.Bool("unique") && c.Bool("full-text") {
+				return fmt.Errorf("cannot create both unique and full-text index")
+			}
+
+			m, err := db.GenCreateSQL(&db.CreateIndexParams{
+				CreateSQLParams: db.CreateSQLParams{
+					Type:         "index",
+					DatabaseName: dbName,
+					TableName:    tableName,
+					Name:         colName,
+				},
+				Columns:  c.StringSlice("column"),
+				Unique:   c.Bool("unique"),
+				FullText: c.Bool("full-text"),
+			})
+
+			if err != nil {
+				return fmt.Errorf("failed to create column: %w", err)
+			}
+			err = m.Save()
+			if err != nil {
+				return fmt.Errorf("failed to save model: %w", err)
+			}
+			return nil
+		},
+	}
+}
+
 func generateCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "generate",
 		Usage:   "Generate source files",
 		Aliases: []string{"gen"},
 		Subcommands: []*cli.Command{
-			{
-				Name:  "db",
-				Usage: "Create a database",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "name",
-						Aliases: []string{"n"},
-						Usage:   "Name of the database",
-					},
-				},
-				Action: func(c *cli.Context) error {
-					dbName := c.String("name")
-					if dbName == "" {
-						name, err := utils.RepoFullName()
-						dbName = name
-						if err != nil {
-							return fmt.Errorf("failed to get repo full name: %w", err)
-						}
-					}
-					m, err := db.CreateDatabase(dbName)
-					if err != nil {
-						return fmt.Errorf("failed to create database: %w", err)
-					}
-					err = m.Save()
-					if err != nil {
-						return fmt.Errorf("failed to save model: %w", err)
-					}
-					return nil
-				},
-			},
-			{
-				Name:    "table",
-				Usage:   "Create a table",
-				Aliases: []string{"tab"},
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "name",
-						Aliases:  []string{"n"},
-						Usage:    "Name of the table",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:  "db",
-						Usage: "Name of the database",
-					},
-				},
-				Action: func(c *cli.Context) error {
-					tableName := c.String("name")
-					if tableName == "" {
-						return fmt.Errorf("name is required")
-					}
-					dbName := c.String("db")
-					if dbName == "" {
-						name, err := utils.RepoFullName()
-						dbName = name
-						if err != nil {
-							return fmt.Errorf("failed to get repo full name: %w", err)
-						}
-					}
-
-					m, err := db.CreateTable(dbName, tableName)
-					if err != nil {
-						return fmt.Errorf("failed to create table: %w", err)
-					}
-					err = m.Save()
-					if err != nil {
-						return fmt.Errorf("failed to save model: %w", err)
-					}
-					return nil
-				},
-			},
-			{
-				Name:    "column",
-				Aliases: []string{"col"},
-				Usage:   "Create a column",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "name",
-						Aliases:  []string{"n"},
-						Usage:    "Name of the column",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:  "db",
-						Usage: "Name of the database",
-					},
-					&cli.StringFlag{
-						Name:     "table",
-						Usage:    "Name of the table",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:  "type",
-						Usage: "Column type: string, integer, double, bool, binary, json, text, uuid",
-						Value: "string",
-					},
-				},
-				Action: func(c *cli.Context) error {
-					colName := c.String("name")
-					if colName == "" {
-						return fmt.Errorf("name is required")
-					}
-
-					tableName := c.String("table")
-					if tableName == "" {
-						return fmt.Errorf("table is required")
-					}
-
-					dbName := c.String("db")
-					if dbName == "" {
-						name, err := utils.RepoFullName()
-						dbName = name
-						if err != nil {
-							return fmt.Errorf("failed to get repo full name: %w", err)
-						}
-					}
-
-					colType := c.String("type")
-					if colType == "" {
-						colType = "string"
-					}
-
-					m, err := db.CreateColumn(dbName, tableName, colName, sqlCol(colType))
-					if err != nil {
-						return fmt.Errorf("failed to create column: %w", err)
-					}
-					err = m.Save()
-					if err != nil {
-						return fmt.Errorf("failed to save model: %w", err)
-					}
-					return nil
-				},
-			},
-			{
-				Name:    "property",
-				Aliases: []string{"prop"},
-				Usage:   "Extract a field out of a JSON and store it in a new column",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     "name",
-						Aliases:  []string{"n"},
-						Usage:    "Name of the column",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:     "path",
-						Usage:    "Field path in the JSON",
-						Value:    "string",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:     "table",
-						Usage:    "Name of the table",
-						Required: true,
-					},
-					&cli.StringFlag{
-						Name:  "db",
-						Usage: "Name of the database",
-					},
-					&cli.StringFlag{
-						Name:  "type",
-						Usage: "Column type: string, integer, double, bool, binary, json, text, uuid",
-						Value: "string",
-					},
-					&cli.BoolFlag{
-						Name:  "virtual",
-						Usage: "Name of the virtual property",
-					},
-				},
-				Action: func(c *cli.Context) error {
-					colName := c.String("name")
-					if colName == "" {
-						return fmt.Errorf("name is required")
-					}
-
-					fieldPath := c.String("path")
-					if fieldPath == "" {
-						return fmt.Errorf("JSON field path is required")
-					}
-
-					tableName := c.String("table")
-					if tableName == "" {
-						return fmt.Errorf("table is required")
-					}
-
-					dbName := c.String("db")
-					if dbName == "" {
-						name, err := utils.RepoFullName()
-						dbName = name
-						if err != nil {
-							return fmt.Errorf("failed to get repo full name: %w", err)
-						}
-					}
-
-					m, err := db.CreateProperty(dbName, tableName, colName, fieldPath,
-						sqlCol(c.String("type")), c.Bool("virtual"))
-					if err != nil {
-						return fmt.Errorf("failed to create column: %w", err)
-					}
-					err = m.Save()
-					if err != nil {
-						return fmt.Errorf("failed to save model: %w", err)
-					}
-					return nil
-				},
-			},
+			generateDBCommand(),
+			generateTableCommand(),
+			generateColCommand(),
+			generatePropCommand(),
+			generateIndexCommand(),
 		},
 	}
 }
@@ -741,6 +845,8 @@ func smokerCommand() *cli.Command {
 				[]string{zygotePath, "gen", "table", "--name", "comments"},
 				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "name"},
 				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "email", "--type", "string"},
+				[]string{zygotePath, "gen", "index", "--table", "users", "--name", "email", "--col", "email", "-u"},
+				[]string{zygotePath, "gen", "index", "--table", "users_name", "--name", "--col", "email", "--col", "name"},
 				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "active", "--type", "bool"},
 				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "pic", "--type", "binary"},
 				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "age", "--type", "double"},
@@ -750,6 +856,8 @@ func smokerCommand() *cli.Command {
 				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "views", "--type", "integer"},
 				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "tags", "--type", "json"},
 				[]string{zygotePath, "gen", "prop", "--table", "posts", "--name", "tag", "--type", "string", "--path", "$.name"},
+				[]string{zygotePath, "gen", "index", "--table", "posts", "--name", "tags", "--col", "tag", "--col", "uuid"},
+				[]string{zygotePath, "gen", "index", "-t", "posts", "-n", "content", "--col", "content", "--full-text"},
 				[]string{zygotePath, "migrate", "up"},
 				[]string{zygotePath, "migrate", "down"},
 				[]string{zygotePath, "migrate", "up"},

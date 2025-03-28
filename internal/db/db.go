@@ -331,3 +331,77 @@ func CreateProperty(dbName, tableName, name, fieldPath, dataType string, virtual
 	}
 	return result, nil
 }
+
+type CreateSQLParams struct {
+	TableName    string
+	DatabaseName string
+	Type         string
+	Name         string
+}
+
+func (p CreateSQLParams) GetTableName() string {
+	return p.TableName
+}
+
+func (p CreateSQLParams) GetDatabaseName() string {
+	return p.DatabaseName
+}
+
+func (p CreateSQLParams) GetType() string {
+	return p.Type
+}
+
+func (p CreateSQLParams) GetName() string {
+	return p.Name
+}
+
+type MigrationSpec interface {
+	GetTableName() string
+	GetDatabaseName() string
+	GetType() string
+	GetName() string
+}
+
+func GenCreateSQL(params MigrationSpec) (*SQLMigration, error) {
+	upTemplate, err := templates.ReadFile(fmt.Sprintf("templates/create_%s_up.sql", params.GetType()))
+	if err != nil {
+		return nil, err
+	}
+	downTemplate, err := templates.ReadFile(fmt.Sprintf("templates/create_%s_down.sql", params.GetType()))
+	if err != nil {
+		return nil, err
+	}
+	tmplUp := string(upTemplate)
+	tmplDown := string(downTemplate)
+	tUp, err := template.New(fmt.Sprintf("create_%s_up.sql", params.GetType())).Parse(tmplUp)
+	if err != nil {
+		return nil, err
+	}
+	tDown, err := template.New(fmt.Sprintf("create_%s_down.sql", params.GetType())).Parse(tmplDown)
+	if err != nil {
+		return nil, err
+	}
+
+	var tplUp bytes.Buffer
+	if err := tUp.Execute(&tplUp, params); err != nil {
+		return nil, err
+	}
+	var tplDown bytes.Buffer
+	if err := tDown.Execute(&tplDown, params); err != nil {
+		return nil, err
+	}
+	result := &SQLMigration{
+		Desc: fmt.Sprintf("%s_%s_%s_%s", params.GetType(), params.GetDatabaseName(),
+			params.GetTableName(), params.GetName()),
+		Up:   strings.Trim(tplUp.String(), "\n"),
+		Down: strings.Trim(tplDown.String(), "\n"),
+	}
+	return result, nil
+}
+
+type CreateIndexParams struct {
+	CreateSQLParams
+	Columns  []string
+	Unique   bool
+	FullText bool
+}
