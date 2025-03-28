@@ -442,6 +442,31 @@ func sqlCommand() *cli.Command {
 	}
 }
 
+func sqlCol(colType string) string {
+	var sqlCol string
+	switch colType {
+	case "string":
+		sqlCol = varChar255
+	case "integer":
+		sqlCol = "INT"
+	case "double":
+		sqlCol = "DOUBLE"
+	case "bool":
+		sqlCol = "BOOLEAN"
+	case "binary":
+		sqlCol = "MEDIUMBLOB"
+	case "json":
+		sqlCol = "JSON"
+	case "uuid":
+		sqlCol = "CHAR(36)"
+	case "text":
+		sqlCol = "MEDIUMTEXT"
+	default:
+		sqlCol = varChar255
+	}
+	return sqlCol
+}
+
 func generateCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "generate",
@@ -479,8 +504,9 @@ func generateCommand() *cli.Command {
 				},
 			},
 			{
-				Name:  "table",
-				Usage: "Create a table",
+				Name:    "table",
+				Usage:   "Create a table",
+				Aliases: []string{"tab"},
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "name",
@@ -569,29 +595,80 @@ func generateCommand() *cli.Command {
 						colType = "string"
 					}
 
-					var sqlCol string
-					switch colType {
-					case "string":
-						sqlCol = varChar255
-					case "integer":
-						sqlCol = "INT"
-					case "double":
-						sqlCol = "DOUBLE"
-					case "bool":
-						sqlCol = "BOOLEAN"
-					case "binary":
-						sqlCol = "MEDIUMBLOB"
-					case "json":
-						sqlCol = "JSON"
-					case "uuid":
-						sqlCol = "CHAR(36)"
-					case "text":
-						sqlCol = "MEDIUMTEXT"
-					default:
-						sqlCol = varChar255
+					m, err := db.CreateColumn(dbName, tableName, colName, sqlCol(colType))
+					if err != nil {
+						return fmt.Errorf("failed to create column: %w", err)
+					}
+					err = m.Save()
+					if err != nil {
+						return fmt.Errorf("failed to save model: %w", err)
+					}
+					return nil
+				},
+			},
+			{
+				Name:    "property",
+				Aliases: []string{"prop"},
+				Usage:   "Extract a field out of a JSON and store it in a new column",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:     "name",
+						Aliases:  []string{"n"},
+						Usage:    "Name of the column",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "path",
+						Usage:    "Field path in the JSON",
+						Value:    "string",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:     "table",
+						Usage:    "Name of the table",
+						Required: true,
+					},
+					&cli.StringFlag{
+						Name:  "db",
+						Usage: "Name of the database",
+					},
+					&cli.StringFlag{
+						Name:  "type",
+						Usage: "Column type: string, integer, double, bool, binary, json, text, uuid",
+						Value: "string",
+					},
+					&cli.BoolFlag{
+						Name:  "virtual",
+						Usage: "Name of the virtual property",
+					},
+				},
+				Action: func(c *cli.Context) error {
+					colName := c.String("name")
+					if colName == "" {
+						return fmt.Errorf("name is required")
 					}
 
-					m, err := db.CreateColumn(dbName, tableName, colName, sqlCol)
+					fieldPath := c.String("path")
+					if fieldPath == "" {
+						return fmt.Errorf("JSON field path is required")
+					}
+
+					tableName := c.String("table")
+					if tableName == "" {
+						return fmt.Errorf("table is required")
+					}
+
+					dbName := c.String("db")
+					if dbName == "" {
+						name, err := utils.RepoFullName()
+						dbName = name
+						if err != nil {
+							return fmt.Errorf("failed to get repo full name: %w", err)
+						}
+					}
+
+					m, err := db.CreateProperty(dbName, tableName, colName, fieldPath,
+						sqlCol(c.String("type")), c.Bool("virtual"))
 					if err != nil {
 						return fmt.Errorf("failed to create column: %w", err)
 					}
@@ -672,6 +749,7 @@ func smokerCommand() *cli.Command {
 				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "content", "--type", "text"},
 				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "views", "--type", "integer"},
 				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "tags", "--type", "json"},
+				[]string{zygotePath, "gen", "prop", "--table", "posts", "--name", "tag", "--type", "string", "--path", "$.name"},
 				[]string{zygotePath, "migrate", "up"},
 				[]string{zygotePath, "migrate", "down"},
 				[]string{zygotePath, "migrate", "up"},

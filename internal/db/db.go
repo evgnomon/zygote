@@ -166,7 +166,7 @@ func CreateDatabase(dbName string) (*SQLMigration, error) {
 		return nil, err
 	}
 	result := &SQLMigration{
-		Desc: fmt.Sprintf("create_db_%s", dbName),
+		Desc: fmt.Sprintf("db_%s", dbName),
 		Up:   strings.Trim(tplUp.String(), "\n"),
 		Down: strings.Trim(tplDown.String(), "\n"),
 	}
@@ -206,7 +206,7 @@ func CreateTable(dbName, tableName string) (*SQLMigration, error) {
 		return nil, err
 	}
 	result := &SQLMigration{
-		Desc: fmt.Sprintf("create_table_%s_%s", dbName, tableName),
+		Desc: fmt.Sprintf("table_%s_%s", dbName, tableName),
 		Up:   strings.Trim(tplUp.String(), "\n"),
 		Down: strings.Trim(tplDown.String(), "\n"),
 	}
@@ -219,6 +219,27 @@ type CreateColumnParams struct {
 	SQLColType   string
 	ColumnName   string
 	DefaultValue string
+}
+
+func resolveDefaultValue(sqlColType string) (string, error) {
+	var defaultValue string
+	switch sqlColType {
+	case "INT", "BIGINT":
+		defaultValue = "0"
+	case "FLOAT", "DOUBLE":
+		defaultValue = "0.0"
+	case "BOOLEAN":
+		defaultValue = "false"
+	case "MEDIUMBLOB":
+		defaultValue = "''"
+	case "JSON":
+		defaultValue = "NULL"
+	case "VARCHAR(255)", "MEDIUMTEXT", "CHAR(36)":
+		defaultValue = "''"
+	default:
+		return "", fmt.Errorf("unsupported column type: %s", sqlColType)
+	}
+	return defaultValue, nil
 }
 
 func CreateColumn(dbName, tableName, name, sqlColType string) (*SQLMigration, error) {
@@ -241,22 +262,9 @@ func CreateColumn(dbName, tableName, name, sqlColType string) (*SQLMigration, er
 		return nil, err
 	}
 
-	var defaultValue string
-	switch sqlColType {
-	case "INT", "BIGINT":
-		defaultValue = "0"
-	case "FLOAT", "DOUBLE":
-		defaultValue = "0.0"
-	case "BOOLEAN":
-		defaultValue = "false"
-	case "MEDIUMBLOB":
-		defaultValue = "''"
-	case "JSON":
-		defaultValue = "NULL"
-	case "VARCHAR(255)", "MEDIUMTEXT", "CHAR(36)":
-		defaultValue = "''"
-	default:
-		return nil, fmt.Errorf("unsupported column type: %s", sqlColType)
+	defaultValue, err := resolveDefaultValue(sqlColType)
+	if err != nil {
+		return nil, err
 	}
 
 	var tplUp bytes.Buffer
@@ -270,7 +278,54 @@ func CreateColumn(dbName, tableName, name, sqlColType string) (*SQLMigration, er
 		return nil, err
 	}
 	result := &SQLMigration{
-		Desc: fmt.Sprintf("create_column_%s_%s_%s", dbName, tableName, name),
+		Desc: fmt.Sprintf("column_%s_%s_%s", dbName, tableName, name),
+		Up:   strings.Trim(tplUp.String(), "\n"),
+		Down: strings.Trim(tplDown.String(), "\n"),
+	}
+	return result, nil
+}
+
+type CreatePropertyParams struct {
+	TableName    string
+	DatabaseName string
+	FieldPath    string
+	ColumnName   string
+	DataType     string
+	Virtual      bool
+}
+
+func CreateProperty(dbName, tableName, name, fieldPath, dataType string, virtual bool) (*SQLMigration, error) {
+	upTemplate, err := templates.ReadFile("templates/create_property_up.sql")
+	if err != nil {
+		return nil, err
+	}
+	downTemplate, err := templates.ReadFile("templates/create_property_down.sql")
+	if err != nil {
+		return nil, err
+	}
+	tmplUp := string(upTemplate)
+	tmplDown := string(downTemplate)
+	tUp, err := template.New("create_property_up.sql").Parse(tmplUp)
+	if err != nil {
+		return nil, err
+	}
+	tDown, err := template.New("create_property_down.sql").Parse(tmplDown)
+	if err != nil {
+		return nil, err
+	}
+
+	var tplUp bytes.Buffer
+	params := &CreatePropertyParams{TableName: tableName, DatabaseName: dbName,
+		ColumnName: name, FieldPath: fieldPath, DataType: dataType, Virtual: virtual}
+	if err := tUp.Execute(&tplUp, params); err != nil {
+		return nil, err
+	}
+	var tplDown bytes.Buffer
+	if err := tDown.Execute(&tplDown, params); err != nil {
+		return nil, err
+	}
+	result := &SQLMigration{
+		Desc: fmt.Sprintf("prop_%s_%s_%s", dbName, tableName, name),
 		Up:   strings.Trim(tplUp.String(), "\n"),
 		Down: strings.Trim(tplDown.String(), "\n"),
 	}
