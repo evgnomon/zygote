@@ -22,7 +22,7 @@ import (
 //go:embed templates/*.sql
 var templates embed.FS
 
-const mysqlImage = "mysql:8.0.33"
+const mysqlImage = "mysql:8.4.4"
 const plainFilePermission = 0644
 const sqlsDir = "sqls"
 
@@ -65,6 +65,7 @@ func CreateDBContainer(numShards int, networkName string) {
 				Retries:  20,
 				Interval: 1 * time.Second,
 			},
+			Cmd: []string{"mysqld", "--mysql-native-password=ON"},
 		}
 
 		hostConfig := &dcontainer.HostConfig{
