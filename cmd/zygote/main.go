@@ -429,7 +429,11 @@ func sqlCommand() *cli.Command {
 		Usage: "SQL shell to interact with the database",
 		Action: func(_ *cli.Context) error {
 			os.Setenv("MYSQL_PWD", "root1234")
-			err := utils.Run("mysql", "-u", "root", "-h", "127.0.0.1", "-s", "--auto-rehash")
+			dbName, err := utils.RepoFullName()
+			if err != nil {
+				return fmt.Errorf("failed to get repo full name: %w", err)
+			}
+			err = utils.Run("mysql", "-u", "root", "-h", "127.0.0.1", "-s", "--auto-rehash", "-D", dbName)
 			if err != nil {
 				return err
 			}
