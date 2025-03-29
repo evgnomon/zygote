@@ -118,6 +118,7 @@ func Script(commands [][]string) error {
 	for _, cmd := range commands {
 		err := Run(cmd...)
 		if err != nil {
+			print("failed to run command: %v", cmd)
 			return fmt.Errorf("failed to running command: %w", err)
 		}
 	}
