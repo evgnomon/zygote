@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/evgnomon/zygote/pkg/utils"
-	"github.com/golang-migrate/migrate/v4"
+	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/mysql"
 	"go.uber.org/zap"
 )

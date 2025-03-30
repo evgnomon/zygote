@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 //go:embed scripts/vault_pass

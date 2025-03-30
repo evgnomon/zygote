@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-resty/resty/v2"
+	resty "github.com/go-resty/resty/v2"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v2"
 	"go.uber.org/zap"
 	"golang.org/x/term"
 
@@ -460,7 +460,7 @@ func sqlCommand() *cli.Command {
 			password := "root1234"
 			if c.String("user") != "" {
 				fmt.Print("Enter password: ")
-				bytePassword, err := term.ReadPassword(syscall.Stdin)
+				bytePassword, err := term.ReadPassword(int(syscall.Stdin)) //nolint:unconvert
 				if err != nil {
 					return fmt.Errorf("failed to read password: %w", err)
 				}
