@@ -8,7 +8,7 @@ import (
 	"strconv"
 
 	"github.com/evgnomon/zygote/pkg/utils"
-	"github.com/golang-migrate/migrate/v4"
+	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/mysql"
 	"go.uber.org/zap"
 )
@@ -26,20 +26,17 @@ func (m *Migration) Up(_ context.Context, logger *zap.Logger) error {
 		return nil
 	}
 	logger.Info("migrations up start")
-	for shardID := 0; shardID < 2; shardID++ {
-		db, err := connect(shardID)
-		if err != nil {
-			return err
-		}
-		m, err := m.Migrate(logger, db)
-		if err != nil {
-			return err
-		}
-		err = m.Up()
-		if err != nil {
-			if err.Error() == "no change" {
-				continue
-			}
+	db, err := connect(0)
+	if err != nil {
+		return err
+	}
+	m2, err := m.Migrate(logger, db)
+	if err != nil {
+		return err
+	}
+	err = m2.Up()
+	if err != nil {
+		if err.Error() != "no change" {
 			return err
 		}
 	}
@@ -56,41 +53,38 @@ func (m *Migration) Down(_ context.Context, logger *zap.Logger) error {
 		return nil
 	}
 	logger.Info("migrations down start")
-	for shardID := 0; shardID < 2; shardID++ {
-		db, err := connect(shardID)
-		if err != nil {
+	db, err := connect(0)
+	if err != nil {
+		return err
+	}
+	m2, err := m.Migrate(logger, db)
+	if err != nil {
+		return err
+	}
+	err = m2.Down()
+	if err != nil {
+		if err.Error() != "no change" {
 			return err
 		}
-		m, err := m.Migrate(logger, db)
-		if err != nil {
-			return err
-		}
-		err = m.Down()
-		if err != nil {
-			if err.Error() == "no change" {
-				continue
-			}
-			return err
-		}
+	}
 
-		_, _, err = m.Version()
-		if err != nil && err != migrate.ErrNilVersion {
-			return err
-		}
-		m.Close()
+	_, _, err = m2.Version()
+	if err != nil && err != migrate.ErrNilVersion {
+		return err
+	}
+	m2.Close()
 
-		db2, err := connect(shardID)
-		if err != nil {
-			return err
-		}
+	db2, err := connect(0)
+	if err != nil {
+		return err
+	}
 
-		empty, err := isDatabaseEmpty(db2, shardID)
-		if err != nil {
-			return err
-		}
-		if !empty {
-			return fmt.Errorf("database is not empty")
-		}
+	empty, err := isDatabaseEmpty(db2, 0)
+	if err != nil {
+		return err
+	}
+	if !empty {
+		return fmt.Errorf("database is not empty")
 	}
 	logger.Info("migrations down done")
 	return nil
@@ -137,7 +131,7 @@ func isDatabaseEmpty(db *sql.DB, _ int) (bool, error) {
 
 // make *sql.DB based on connection string
 func connect(shard int) (*sql.DB, error) {
-	shardPort := 3306 + shard
+	shardPort := 16446 + shard
 	shardHost := "localhost"
 	if envShardHost := os.Getenv(fmt.Sprintf("DB_SHARD_%d_INTERNAL_HOST", shard+1)); envShardHost != "" {
 		shardHost = envShardHost

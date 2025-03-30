@@ -47,6 +47,9 @@ func CreateMemContainer(numShards int, networkName string) {
 			Binds: []string{
 				fmt.Sprintf("zygote-mem-shard-%d-data:/var/lib/redis", i),
 			},
+			RestartPolicy: dcontainer.RestartPolicy{
+				Name: dcontainer.RestartPolicyAlways,
+			},
 		}
 
 		_, err = cli.NetworkInspect(ctx, networkName, dnet.InspectOptions{})

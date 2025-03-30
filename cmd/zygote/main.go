@@ -10,13 +10,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
-	"github.com/go-resty/resty/v2"
+	resty "github.com/go-resty/resty/v2"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/urfave/cli/v2"
+	cli "github.com/urfave/cli/v2"
 	"go.uber.org/zap"
+	"golang.org/x/term"
 
 	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/evgnomon/zygote/internal/container"
@@ -32,6 +34,8 @@ const httpClientTimeout = 10 * time.Second
 const editor = "vi"
 const varChar255 = "VARCHAR(255)"
 const dirPerm = 0755
+const routerReadWritePort = 16446
+const routerReadOnlyPort = 17447
 
 func vaultCommand() *cli.Command {
 	return &cli.Command{
@@ -249,6 +253,10 @@ func initCommand() *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			ctx := context.Background()
+			if c.Bool("local") {
+				err := initSQLClusterLocal(ctx, logger, c.String("directory"))
+				return err
+			}
 			err := initContainers(ctx, logger, c.String("directory"))
 			return err
 		},
@@ -427,13 +435,61 @@ func sqlCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "sql",
 		Usage: "SQL shell to interact with the database",
-		Action: func(_ *cli.Context) error {
-			os.Setenv("MYSQL_PWD", "root1234")
+		Flags: []cli.Flag{
+			&cli.IntFlag{
+				Name:  "n",
+				Usage: "Instance number",
+			},
+			&cli.StringFlag{
+				Name:  "i",
+				Usage: "Input script",
+			},
+			&cli.BoolFlag{
+				Name:    "r",
+				Aliases: []string{"read-only"},
+				Usage:   "Connect through read-only port",
+			},
+			&cli.StringFlag{
+				Name:    "user",
+				Aliases: []string{"u"},
+				Usage:   "Connect as a user",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			user := "root"
+			password := "root1234"
+			if c.String("user") != "" {
+				fmt.Print("Enter password: ")
+				bytePassword, err := term.ReadPassword(int(syscall.Stdin)) //nolint:unconvert
+				if err != nil {
+					return fmt.Errorf("failed to read password: %w", err)
+				}
+				password = string(bytePassword)
+				user = c.String("user")
+				fmt.Println()
+			}
+
+			// Construct the MySQL DSN (Data Source Name)
+			n := c.Int("n")
+			os.Setenv("MYSQL_PWD", password)
 			dbName, err := utils.RepoFullName()
 			if err != nil {
 				return fmt.Errorf("failed to get repo full name: %w", err)
 			}
-			err = utils.Run("mysql", "-u", "root", "-h", "127.0.0.1", "-s", "--auto-rehash", "-D", dbName)
+
+			portNum := fmt.Sprintf("%d", 3306+n-1)
+			if n == 0 {
+				portNum = fmt.Sprintf("%d", routerReadWritePort)
+			}
+			if c.Bool("read-only") {
+				portNum = fmt.Sprintf("%d", routerReadOnlyPort)
+			}
+
+			command := []string{"mysql", "-u", user, "-h", "127.0.0.1", "-P", portNum, "-s", "--auto-rehash", "-D", dbName}
+			if c.String("i") != "" {
+				command = append(command, "-e", c.String("i"))
+			}
+			err = utils.Run(command...)
 			if err != nil {
 				return err
 			}
@@ -839,25 +895,25 @@ func smokerCommand() *cli.Command {
 				[]string{"sudo", zygotePath, "deinit", "-v"},
 				[]string{"sudo", zygotePath, "init"},
 				[]string{"sudo", "-K"},
-				[]string{zygotePath, "gen", "db", "--name", "smokers"},
-				[]string{zygotePath, "gen", "table", "--name", "users"},
-				[]string{zygotePath, "gen", "table", "--name", "posts"},
-				[]string{zygotePath, "gen", "table", "--name", "comments"},
-				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "name"},
-				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "email", "--type", "string"},
-				[]string{zygotePath, "gen", "index", "--table", "users", "--name", "email", "--col", "email", "-u"},
-				[]string{zygotePath, "gen", "index", "--table", "users_name", "--name", "--col", "email", "--col", "name"},
-				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "active", "--type", "bool"},
-				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "pic", "--type", "binary"},
-				[]string{zygotePath, "gen", "col", "--table", "users", "--name", "age", "--type", "double"},
-				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "title"},
-				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "uuid", "--type", "uuid"},
-				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "content", "--type", "text"},
-				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "views", "--type", "integer"},
-				[]string{zygotePath, "gen", "col", "--table", "posts", "--name", "tags", "--type", "json"},
-				[]string{zygotePath, "gen", "prop", "--table", "posts", "--name", "tag", "--type", "string", "--path", "$.name"},
-				[]string{zygotePath, "gen", "index", "--table", "posts", "--name", "tags", "--col", "tag", "--col", "uuid"},
-				[]string{zygotePath, "gen", "index", "-t", "posts", "-n", "content", "--col", "content", "--full-text"},
+				[]string{zygotePath, "gen", "db", "--name=smokers"},
+				[]string{zygotePath, "gen", "table", "--name=users"},
+				[]string{zygotePath, "gen", "table", "--name=posts"},
+				[]string{zygotePath, "gen", "table", "--name=comments"},
+				[]string{zygotePath, "gen", "col", "--table=users", "--name=name"},
+				[]string{zygotePath, "gen", "col", "--table=users", "--name=email", "--type=string"},
+				[]string{zygotePath, "gen", "index", "--table=users", "--name=email", "--col=email", "-u"},
+				[]string{zygotePath, "gen", "index", "--table=users", "--name", "users_name", "--col", "email", "--col", "name"},
+				[]string{zygotePath, "gen", "col", "--table=users", "--name=active", "--type=bool"},
+				[]string{zygotePath, "gen", "col", "--table=users", "--name=pic", "--type=binary"},
+				[]string{zygotePath, "gen", "col", "--table=users", "--name=age", "--type=double"},
+				[]string{zygotePath, "gen", "col", "--table=posts", "--name=title"},
+				[]string{zygotePath, "gen", "col", "--table=posts", "--name=uuid", "--type=uuid"},
+				[]string{zygotePath, "gen", "col", "--table=posts", "--name=content", "--type=text"},
+				[]string{zygotePath, "gen", "col", "--table=posts", "--name=views", "--type=integer"},
+				[]string{zygotePath, "gen", "col", "--table=posts", "--name=tags", "--type=json"},
+				[]string{zygotePath, "gen", "prop", "--table=posts", "--name=tag", "--type=string", "--path=$.name"},
+				[]string{zygotePath, "gen", "index", "--table=posts", "--name=tags", "--col=tag", "--col=uuid"},
+				[]string{zygotePath, "gen", "index", "-t", "posts", "-n", "content", "--col=content", "--full-text"},
 				[]string{zygotePath, "migrate", "up"},
 				[]string{zygotePath, "migrate", "down"},
 				[]string{zygotePath, "migrate", "up"},
@@ -931,7 +987,7 @@ func initContainers(ctx context.Context, logger *zap.Logger, directory string) e
 			Username: "admin",
 			Password: "password",
 		}
-		sqlStatements, err := container.SQLInit(sqlParams)
+		sqlStatements, err := container.ApplyTemplate("sql_init_template.sql", sqlParams)
 		if err != nil {
 			return err
 		}
@@ -942,6 +998,55 @@ func initContainers(ctx context.Context, logger *zap.Logger, directory string) e
 	mem.CreateMemContainer(3, container.AppNetworkName())
 	container.InitRedisCluster()
 	container.WaitHealthy("zygote-", containerStartTimeout)
+	m := NewMigration(directory)
+	return m.Up(ctx, logger)
+}
+
+func initSQLClusterLocal(ctx context.Context, logger *zap.Logger, directory string) error {
+	numShards := 3
+	dbName, err := utils.RepoFullName()
+	if err != nil {
+		return fmt.Errorf("failed to get repo full name: %w", err)
+	}
+	for i := 1; i <= numShards; i++ {
+		sqlParams := container.InnoDBClusterParams{
+			ServerID:             i,
+			GroupReplicationPort: 33061,
+			ServerCount:          3,
+			ServersList:          "zygote-db-rep-1:33061,zygote-db-rep-2:33061,zygote-db-rep-3:33061",
+		}
+		innodbGroupReplication, err := container.ApplyTemplate("innodb_cluster_template.cnf", sqlParams)
+		if err != nil {
+			return err
+		}
+		sqlParams2 := container.SQLInitParams{
+			DBName:   dbName,
+			Username: "admin",
+			Password: "password",
+		}
+		sqlStatements, err := container.ApplyTemplate("sql_init_template.sql", sqlParams2)
+		if err != nil {
+			return err
+		}
+
+		routerConf, err := container.ApplyTemplate("router.conf", sqlParams2)
+		if err != nil {
+			return err
+		}
+
+		container.Vol(sqlStatements, fmt.Sprintf("zygote-db-conf-%d", i), "/docker-entrypoint-initdb.d", "init.sql", container.AppNetworkName())
+
+		container.Vol(innodbGroupReplication, fmt.Sprintf("zygote-db-conf-gr-%d", i), "/etc/mysql/conf.d/", "gr.cnf", container.AppNetworkName())
+
+		container.Vol(routerConf, fmt.Sprintf("zygote-db-router-conf-%d", i), "/etc/mysqlrouter/", "router.conf", container.AppNetworkName())
+	}
+	db.CreateGroupReplicationContainer(3, container.AppNetworkName())
+	container.WaitHealthy("zygote-", containerStartTimeout)
+	db.SetupGroupReplication()
+	db.CreateRouter(container.AppNetworkName())
+	container.WaitHealthy("zygote-", containerStartTimeout)
+	mem.CreateMemContainer(3, container.AppNetworkName())
+	container.InitRedisCluster()
 	m := NewMigration(directory)
 	return m.Up(ctx, logger)
 }

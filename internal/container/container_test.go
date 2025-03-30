@@ -7,13 +7,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSqlInit(t *testing.T) {
+func TestApplyTemplate(t *testing.T) {
 	tests := []struct {
-		params SQLInitParams
-		want   []string
+		templateName string
+		params       any
+		want         []string
 	}{
 		{
-			params: SQLInitParams{DBName: "myproject_1", Username: "test_1", Password: "password"},
+			templateName: "sql_init_template.sql",
+			params:       SQLInitParams{DBName: "myproject_1", Username: "test_1", Password: "password"},
 			want: []string{
 				"CREATE DATABASE IF NOT EXISTS myproject_1;",
 				"CREATE USER IF NOT EXISTS 'test_1'@'localhost' IDENTIFIED WITH mysql_native_password BY 'password';",
@@ -25,7 +27,8 @@ func TestSqlInit(t *testing.T) {
 			},
 		},
 		{
-			params: SQLInitParams{DBName: "myproject_2", Username: "test_2", Password: "password"},
+			templateName: "sql_init_template.sql",
+			params:       SQLInitParams{DBName: "myproject_2", Username: "test_2", Password: "password"},
 			want: []string{
 				"CREATE DATABASE IF NOT EXISTS myproject_2;",
 				"CREATE USER IF NOT EXISTS 'test_2'@'localhost' IDENTIFIED WITH mysql_native_password BY 'password';",
@@ -36,11 +39,38 @@ func TestSqlInit(t *testing.T) {
 				"FLUSH PRIVILEGES;",
 			},
 		},
+		{
+			templateName: "innodb_cluster_template.cnf",
+			params: InnoDBClusterParams{
+				ServerID:             1,
+				GroupReplicationPort: 33061,
+				ServerCount:          3,
+				ServersList:          "zygote-db-rep-1:33061,zygote-db-rep-2:33061,zygote-db-rep-3:33061",
+			},
+			want: []string{
+				"[mysqld]",
+				"server_id=1",
+				"bind-address = 0.0.0.0",
+				`report_host = "zygote-db-rep-1"`,
+				"gtid_mode=ON",
+				"enforce_gtid_consistency=ON",
+				"log_replica_updates=ON",
+				"log-bin=mysql-bin",
+				"binlog_format=ROW",
+				"xa_detach_on_prepare=ON",
+				"binlog_checksum=NONE",
+				"relay-log = mysqld-relay-bin",
+				"relay-log-index = mysqld-relay-bin.index",
+				"mysql_native_password=ON",
+				"sql_require_primary_key=ON",
+				`disabled_storage_engines="MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY"`,
+			},
+		},
 	}
 
 	for _, tt := range tests {
-		result, err := SQLInit(tt.params)
+		result, err := ApplyTemplate(tt.templateName, tt.params)
 		assert.Nil(t, err, "Error should be nil")
-		assert.Equal(t, strings.Join(tt.want, "\n"), result)
+		assert.Equal(t, result, strings.Join(tt.want, "\n"))
 	}
 }

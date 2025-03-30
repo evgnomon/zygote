@@ -3,6 +3,7 @@ package container
 import (
 	"bytes"
 	"embed"
+	"fmt"
 	"html/template"
 	"strings"
 )
@@ -13,11 +14,18 @@ type SQLInitParams struct {
 	Password string
 }
 
-//go:embed templates/*.sql
+type InnoDBClusterParams struct {
+	ServerID             int
+	GroupReplicationPort int
+	ServerCount          int
+	ServersList          string
+}
+
+//go:embed templates/*
 var templates embed.FS
 
-func SQLInit(params SQLInitParams) (string, error) {
-	data, err := templates.ReadFile("templates/sql_init_template.sql")
+func ApplyTemplate(name string, params any) (string, error) {
+	data, err := templates.ReadFile(fmt.Sprintf("templates/%s", name))
 
 	if err != nil {
 		return "", err
@@ -25,7 +33,7 @@ func SQLInit(params SQLInitParams) (string, error) {
 
 	tmpl := string(data)
 
-	t, err := template.New("sqlInit").Parse(tmpl)
+	t, err := template.New(name).Parse(tmpl)
 	if err != nil {
 		return "", err
 	}

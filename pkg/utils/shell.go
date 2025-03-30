@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/pelletier/go-toml/v2"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 //go:embed scripts/vault_pass
@@ -118,6 +118,7 @@ func Script(commands [][]string) error {
 	for _, cmd := range commands {
 		err := Run(cmd...)
 		if err != nil {
+			print("failed to run command: %v", cmd)
 			return fmt.Errorf("failed to running command: %w", err)
 		}
 	}
