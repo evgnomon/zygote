@@ -266,6 +266,39 @@ func initCommand() *cli.Command {
 	}
 }
 
+func joinCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "join",
+		Usage: "Join to a remote cluster",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "directory",
+				Aliases: []string{"C"},
+				Value:   "sqls",
+				Usage:   "Directory containing the SQL migration files.",
+			},
+			&cli.Int64Flag{
+				Name:    "replica-index",
+				Aliases: []string{"n"},
+				Value:   0,
+				Usage:   "Replica ID, starting 0",
+			},
+			&cli.Int64Flag{
+				Name:    "shard-index",
+				Aliases: []string{"s"},
+				Value:   0,
+				Usage:   "Shared index, starting 0",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			ctx := context.Background()
+			var cl db.Cluster
+			err := cl.Create(ctx, int(c.Int64("shard-index")), int(c.Int64("replica-index")))
+			return err
+		},
+	}
+}
+
 func deinitCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "deinit",
@@ -965,6 +998,7 @@ func main() {
 			sqlCommand(),
 			generateCommand(),
 			smokerCommand(),
+			joinCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {

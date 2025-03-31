@@ -46,6 +46,7 @@ func TestApplyTemplate(t *testing.T) {
 				GroupReplicationPort: 33061,
 				ServerCount:          3,
 				ServersList:          "zygote-db-rep-1:33061,zygote-db-rep-2:33061,zygote-db-rep-3:33061",
+				ReportAddress:        "zygote-db-rep-1",
 			},
 			want: []string{
 				"[mysqld]",

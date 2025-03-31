@@ -129,7 +129,7 @@ func CreateGroupReplicationContainer(numReplicas int, networkName string) {
 	ctx := context.Background()
 	for i := 1; i <= numReplicas; i++ {
 		var r Replica
-		r.Index = i-1
+		r.Index = i - 1
 		r.NetworkName = networkName
 		r.AdminPasswrod = "password"
 		r.RootPasswrod = "root1234"
@@ -263,7 +263,7 @@ func (c *Cluster) PublicAddresses(shardIndex int) []string {
 		return nil
 	}
 	addrs := make([]string, c.Size)
-	for i := 1; i <= c.Size; i++ {
+	for i := 0; i < c.Size; i++ {
 		addrs[i] = fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(i)), c.Domain, mysqlPublicPort)
 		if shardIndex > 0 {
 			addrs[i] = fmt.Sprintf("shard-%s-%d.%s:%d", string('a'+rune(i)), shardIndex, c.Domain, mysqlPublicPort)
@@ -277,7 +277,7 @@ func (c *Cluster) GroupReplicationAddresses(shardIndex int) []string {
 		return nil
 	}
 	addrs := make([]string, c.Size)
-	for i := 1; i <= c.Size; i++ {
+	for i := 0; i < c.Size; i++ {
 		addrs[i] = fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(i)), c.Domain, groupRepPort)
 		if shardIndex > 0 {
 			addrs[i] = fmt.Sprintf("shard-%s-%d.%s:%d", string('a'+rune(i)), shardIndex, c.Domain, groupRepPort)
@@ -312,6 +312,12 @@ func (c *Cluster) DefaultValues() error {
 	if c.NetworkName == "" {
 		c.NetworkName = container.AppNetworkName()
 	}
+	if c.GroupName == "" {
+		c.GroupName = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	}
+	if c.Domain == "" {
+		c.Domain = "zygote.run"
+	}
 	return nil
 }
 
@@ -320,13 +326,17 @@ func (c *Cluster) Create(ctx context.Context, shardIndex int, repIndex int) erro
 	if err != nil {
 		return err
 	}
-	c.CreateInstance(ctx, shardIndex, repIndex)
-	c.SetAsGroupReplica(shardIndex, repIndex)
+
+	err = c.CreateReplica(ctx, shardIndex, repIndex)
+	if err != nil {
+		return err
+	}
+
+	err = c.SetAsGroupReplica(shardIndex, repIndex)
+	if err != nil {
+		return err
+	}
 	c.CreateRouter()
-	// mem.CreateMemContainer(3, container.AppNetworkName())
-	// container.InitRedisCluster()
-	// m := NewMigration(c.MigrationDir)
-	// return m.Up(ctx)
 	return nil
 }
 
@@ -349,7 +359,7 @@ func (c *Cluster) CreateRouter() {
 	container.WaitHealthy(c.Tenant+"-db-router-", containerStartTimeout)
 }
 
-func (c *Cluster) CreateInstance(ctx context.Context, shardIndex, repIndex int) error {
+func (c *Cluster) CreateReplica(ctx context.Context, shardIndex, repIndex int) error {
 	err := c.DefaultValues()
 	if err != nil {
 		return err
@@ -359,6 +369,7 @@ func (c *Cluster) CreateInstance(ctx context.Context, shardIndex, repIndex int) 
 		GroupReplicationPort: groupRepPort,
 		ServerCount:          c.Size,
 		ServersList:          strings.Join(c.GroupReplicationAddresses(shardIndex), ","),
+		ReportAddress:        fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(repIndex)), c.Domain, mysqlPublicPort),
 	}
 	innodbGroupReplication, err := container.ApplyTemplate(clusterTmplName, sqlParams)
 	if err != nil {
@@ -380,11 +391,11 @@ func (c *Cluster) CreateInstance(ctx context.Context, shardIndex, repIndex int) 
 	if err != nil {
 		return err
 	}
-	container.Vol(sqlStatements, fmt.Sprintf("%s-db-conf-%d", c.Tenant, repIndex),
+	container.Vol(sqlStatements, fmt.Sprintf("%s-db-conf-%d", c.Tenant, repIndex+1),
 		"/docker-entrypoint-initdb.d", "init.sql", container.AppNetworkName())
-	container.Vol(innodbGroupReplication, fmt.Sprintf("%s-db-conf-gr-%d", c.Tenant, repIndex),
+	container.Vol(innodbGroupReplication, fmt.Sprintf("%s-db-conf-gr-%d", c.Tenant, repIndex+1),
 		"/etc/mysql/conf.d/", "gr.cnf", container.AppNetworkName())
-	container.Vol(routerConf, fmt.Sprintf("%s-db-router-conf-%d", c.Tenant, repIndex),
+	container.Vol(routerConf, fmt.Sprintf("%s-db-router-conf-%d", c.Tenant, repIndex+1),
 		"/etc/mysqlrouter/", "router.conf", container.AppNetworkName())
 	var r Replica
 	r.Index = repIndex
@@ -896,7 +907,7 @@ func (c *Cluster) SetAsGroupReplica(shardIndex, repIndex int) error {
 	queries := []string{
 		"SET SQL_LOG_BIN = 0",
 		"INSTALL PLUGIN group_replication SONAME 'group_replication.so'",
-		"SET GLOBAL group_replication_group_name = '%s'",
+		fmt.Sprintf("SET GLOBAL group_replication_group_name = '%s'", c.GroupName),
 		fmt.Sprintf("SET GLOBAL group_replication_local_address = '%s-db-rep-%d:%d'", c.DatabaseName, repIndex+1, groupRepPort),
 		fmt.Sprintf("SET GLOBAL group_replication_group_seeds = '%s'", strings.Join(c.GroupReplicationAddresses(shardIndex), ",")),
 		"SET SQL_LOG_BIN = 0",
