@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/utils"
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/mysql"
@@ -17,7 +18,8 @@ type Migration struct {
 	Directory string
 }
 
-func (m *Migration) Up(_ context.Context, logger *zap.Logger) error {
+func (m *Migration) Up(_ context.Context) error {
+	logger, err := util.Logger()
 	sqlDirExists, err := utils.PathExists(m.Directory)
 	if err != nil {
 		return fmt.Errorf("failed to check if directory exists: %w", err)
@@ -44,7 +46,8 @@ func (m *Migration) Up(_ context.Context, logger *zap.Logger) error {
 	return nil
 }
 
-func (m *Migration) Down(_ context.Context, logger *zap.Logger) error {
+func (m *Migration) Down(_ context.Context) error {
+	logger, err := util.Logger()
 	sqlDirExists, err := utils.PathExists(m.Directory)
 	if err != nil {
 		return fmt.Errorf("failed to check if directory exists: %w", err)

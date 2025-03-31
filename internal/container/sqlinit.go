@@ -14,11 +14,16 @@ type SQLInitParams struct {
 	Password string
 }
 
+type RouterConfParams struct {
+	Destinations string
+}
+
 type InnoDBClusterParams struct {
 	ServerID             int
 	GroupReplicationPort int
 	ServerCount          int
 	ServersList          string
+	ReportAddress        string
 }
 
 //go:embed templates/*
