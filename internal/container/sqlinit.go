@@ -24,6 +24,7 @@ type InnoDBClusterParams struct {
 	ServerCount          int
 	ServersList          string
 	ReportAddress        string
+	ReportPort           int
 }
 
 //go:embed templates/*

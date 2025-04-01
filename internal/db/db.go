@@ -34,6 +34,7 @@ const containerStartTimeout = 20 * time.Second
 const clusterTmplName = "innodb_cluster_template.cnf"
 const basicInitSQLTmplName = "sql_init_template.sql"
 const mysqlRouterConfTmplName = "router.conf"
+const hostNetworkName = "host"
 
 func CreateDBContainer(numShards int, networkName string) {
 	ctx := context.Background()
@@ -127,9 +128,9 @@ func CreateDBContainer(numShards int, networkName string) {
 
 func CreateGroupReplicationContainer(numReplicas int, networkName string) {
 	ctx := context.Background()
-	for i := 1; i <= numReplicas; i++ {
+	for i := 0; i < numReplicas; i++ {
 		var r Replica
-		r.Index = i - 1
+		r.Index = i
 		r.NetworkName = networkName
 		r.AdminPasswrod = "password"
 		r.RootPasswrod = "root1234"
@@ -163,7 +164,8 @@ func (r *Replica) Create(ctx context.Context) {
 		Image: mysqlImage,
 		Env:   envVars,
 		ExposedPorts: nat.PortSet{
-			"3306": struct{}{},
+			"3306":  struct{}{},
+			"33061": struct{}{},
 		},
 		Healthcheck: &dcontainer.HealthConfig{
 			Test: []string{"CMD",
@@ -183,14 +185,6 @@ func (r *Replica) Create(ctx context.Context) {
 		},
 	}
 	hostConfig := &dcontainer.HostConfig{
-		PortBindings: nat.PortMap{
-			"3306": []nat.PortBinding{
-				{
-					HostIP:   "0.0.0.0",
-					HostPort: fmt.Sprintf("%d", 3306+r.Index),
-				},
-			},
-		},
 		Binds: []string{
 			fmt.Sprintf("%s-db-%d-data:/var/lib/mysql", r.Tenant, r.Index+1),
 			fmt.Sprintf("%s-db-conf-gr-%d:/etc/mysql/conf.d", r.Tenant, r.Index+1),
@@ -201,13 +195,31 @@ func (r *Replica) Create(ctx context.Context) {
 			Name: dcontainer.RestartPolicyAlways,
 		},
 	}
-	_, err = cli.NetworkInspect(ctx, r.NetworkName, networktypes.InspectOptions{})
-	if err != nil {
-		_, err = cli.NetworkCreate(ctx, r.NetworkName, networktypes.CreateOptions{})
+
+	if r.NetworkName != "" && r.NetworkName != hostNetworkName {
+		hostConfig.PortBindings = nat.PortMap{
+			"3306": []nat.PortBinding{
+				{
+					HostIP:   "0.0.0.0",
+					HostPort: fmt.Sprintf("%d", mysqlPublicPort+r.Index),
+				},
+			},
+			"33061": []nat.PortBinding{
+				{
+					HostIP:   "0.0.0.0",
+					HostPort: fmt.Sprintf("%d", groupRepPort+r.Index),
+				},
+			},
+		}
+		_, err = cli.NetworkInspect(ctx, r.NetworkName, networktypes.InspectOptions{})
+		if err != nil {
+			_, err = cli.NetworkCreate(ctx, r.NetworkName, networktypes.CreateOptions{})
+		}
+		if err != nil {
+			panic(err)
+		}
 	}
-	if err != nil {
-		panic(err)
-	}
+
 	if r.NetworkName != "" {
 		hostConfig.NetworkMode = dcontainer.NetworkMode(r.NetworkName)
 	}
@@ -227,9 +239,9 @@ func (r *Replica) Create(ctx context.Context) {
 	container.WaitHealthy(r.Tenant+"-", containerStartTimeout)
 }
 
-func CreateRouter(networkName string) {
+func CreateRouter(repIndex int, networkName string) {
 	CreateContainer(
-		1,
+		repIndex+1,
 		networkName,
 		"zygote-db-router",
 		mysqlImage,
@@ -251,44 +263,59 @@ type Cluster struct {
 	DatabaseName string
 	User         string
 	Password     string
+	RootPassword string
 	MigrationDir string
 	NetworkName  string
 	GroupName    string
 	NumShards    int
-	Size         int
+	ShardSize    int
 }
 
-func (c *Cluster) PublicAddresses(shardIndex int) []string {
-	if c.Size == 0 {
+func (c *Cluster) PublicEndpoints(shardIndex int) []string {
+	if c.ShardSize == 0 {
 		return nil
 	}
-	addrs := make([]string, c.Size)
-	for i := 0; i < c.Size; i++ {
-		addrs[i] = fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(i)), c.Domain, mysqlPublicPort)
+	addrs := make([]string, c.ShardSize)
+	for repIndex := 0; repIndex < c.ShardSize; repIndex++ {
+		addrs[repIndex] = fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(repIndex)), c.Domain, mysqlPublicPort)
 		if shardIndex > 0 {
-			addrs[i] = fmt.Sprintf("shard-%s-%d.%s:%d", string('a'+rune(i)), shardIndex, c.Domain, mysqlPublicPort)
+			addrs[repIndex] = fmt.Sprintf("shard-%s-%d.%s:%d", string('a'+rune(repIndex)), shardIndex, c.Domain, mysqlPublicPort)
 		}
 	}
 	return addrs
 }
 
 func (c *Cluster) GroupReplicationAddresses(shardIndex int) []string {
-	if c.Size == 0 {
+	if c.ShardSize == 0 {
 		return nil
 	}
-	addrs := make([]string, c.Size)
-	for i := 0; i < c.Size; i++ {
-		addrs[i] = fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(i)), c.Domain, groupRepPort)
+	addrs := make([]string, c.ShardSize)
+	for repIndex := 0; repIndex < c.ShardSize; repIndex++ {
+		addrs[repIndex] = fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(repIndex)), c.Domain, groupRepPort)
 		if shardIndex > 0 {
-			addrs[i] = fmt.Sprintf("shard-%s-%d.%s:%d", string('a'+rune(i)), shardIndex, c.Domain, groupRepPort)
+			addrs[repIndex] = fmt.Sprintf("shard-%s-%d.%s:%d", string('a'+rune(repIndex)), shardIndex, c.Domain, groupRepPort)
+		}
+	}
+	return addrs
+}
+
+func (c *Cluster) GroupReplicationHosts(shardIndex int) []string {
+	if c.ShardSize == 0 {
+		return nil
+	}
+	addrs := make([]string, c.ShardSize)
+	for repIndex := 0; repIndex < c.ShardSize; repIndex++ {
+		addrs[repIndex] = fmt.Sprintf("shard-%s.%s", string('a'+rune(repIndex)), c.Domain)
+		if shardIndex > 0 {
+			addrs[repIndex] = fmt.Sprintf("shard-%s-%d.%s", string('a'+rune(repIndex)), shardIndex, c.Domain)
 		}
 	}
 	return addrs
 }
 
 func (c *Cluster) DefaultValues() error {
-	if c.Size == 0 {
-		c.Size = defaultShardSize
+	if c.ShardSize == 0 {
+		c.ShardSize = defaultShardSize
 	}
 	if c.DatabaseName == "" {
 		dbName, err := utils.RepoFullName()
@@ -306,6 +333,9 @@ func (c *Cluster) DefaultValues() error {
 	if c.Password == "" {
 		c.Password = "password"
 	}
+	if c.RootPassword == "" {
+		c.RootPassword = "root1234"
+	}
 	if c.Tenant == "" {
 		c.Tenant = "zygote"
 	}
@@ -321,7 +351,7 @@ func (c *Cluster) DefaultValues() error {
 	return nil
 }
 
-func (c *Cluster) Create(ctx context.Context, shardIndex int, repIndex int) error {
+func (c *Cluster) Create(ctx context.Context, shardIndex, repIndex int) error {
 	err := c.DefaultValues()
 	if err != nil {
 		return err
@@ -336,14 +366,14 @@ func (c *Cluster) Create(ctx context.Context, shardIndex int, repIndex int) erro
 	if err != nil {
 		return err
 	}
-	c.CreateRouter()
+	c.CreateRouter(repIndex)
 	return nil
 }
 
-func (c *Cluster) CreateRouter() {
+func (c *Cluster) CreateRouter(repIndex int) {
 	CreateContainer(
-		1,
-		c.NetworkName,
+		repIndex+1,
+		"host",
 		fmt.Sprintf("%s-db-router", c.Tenant),
 		mysqlImage,
 		[]string{"CMD", "true"},
@@ -367,9 +397,10 @@ func (c *Cluster) CreateReplica(ctx context.Context, shardIndex, repIndex int) e
 	sqlParams := container.InnoDBClusterParams{
 		ServerID:             repIndex + 1,
 		GroupReplicationPort: groupRepPort,
-		ServerCount:          c.Size,
+		ServerCount:          c.ShardSize,
 		ServersList:          strings.Join(c.GroupReplicationAddresses(shardIndex), ","),
-		ReportAddress:        fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(repIndex)), c.Domain, mysqlPublicPort),
+		ReportAddress:        fmt.Sprintf("shard-%s.%s", string('a'+rune(repIndex)), c.Domain),
+		ReportPort:           mysqlPublicPort,
 	}
 	innodbGroupReplication, err := container.ApplyTemplate(clusterTmplName, sqlParams)
 	if err != nil {
@@ -385,7 +416,7 @@ func (c *Cluster) CreateReplica(ctx context.Context, shardIndex, repIndex int) e
 		return err
 	}
 	routerConfParams := container.RouterConfParams{
-		Destinations: strings.Join(c.PublicAddresses(shardIndex), ","),
+		Destinations: strings.Join(c.PublicEndpoints(shardIndex), ","),
 	}
 	routerConf, err := container.ApplyTemplate(mysqlRouterConfTmplName, routerConfParams)
 	if err != nil {
@@ -399,15 +430,15 @@ func (c *Cluster) CreateReplica(ctx context.Context, shardIndex, repIndex int) e
 		"/etc/mysqlrouter/", "router.conf", container.AppNetworkName())
 	var r Replica
 	r.Index = repIndex
-	r.NetworkName = container.AppNetworkName()
-	r.AdminPasswrod = "password"
-	r.RootPasswrod = "root1234"
-	r.Tenant = "zygote"
+	r.NetworkName = c.NetworkName
+	r.AdminPasswrod = c.Password
+	r.RootPasswrod = c.RootPassword
+	r.Tenant = c.Tenant
 	r.Create(ctx)
 	return nil
 }
 
-func CreateContainer(numContainers int, networkName, prefix, mysqlImage string, healthCommand, bindings,
+func CreateContainer(id int, networkName, prefix, mysqlImage string, healthCommand, bindings,
 	caps, envVars, cmd []string, ports map[int]int) {
 	ctx := context.Background()
 	cli, err := container.CreateClinet()
@@ -421,46 +452,46 @@ func CreateContainer(numContainers int, networkName, prefix, mysqlImage string, 
 		exposedPorts[nat.Port(fmt.Sprint(target))] = struct{}{}
 	}
 
-	for i := 1; i <= numContainers; i++ {
-		config := &dcontainer.Config{
-			Image:        mysqlImage,
-			Env:          envVars,
-			ExposedPorts: exposedPorts,
-			Healthcheck: &dcontainer.HealthConfig{
-				Test:     healthCommand,
-				Timeout:  20 * time.Second,
-				Retries:  20,
-				Interval: 1 * time.Second,
-			},
-			Cmd: cmd,
-		}
+	config := &dcontainer.Config{
+		Image:        mysqlImage,
+		Env:          envVars,
+		ExposedPorts: exposedPorts,
+		Healthcheck: &dcontainer.HealthConfig{
+			Test:     healthCommand,
+			Timeout:  20 * time.Second,
+			Retries:  20,
+			Interval: 1 * time.Second,
+		},
+		Cmd: cmd,
+	}
 
-		natBindings := map[nat.Port][]nat.PortBinding{}
+	natBindings := map[nat.Port][]nat.PortBinding{}
 
-		for target, exposed := range ports {
-			natBindings[nat.Port(fmt.Sprint(target))] = []nat.PortBinding{
-				{
-					HostIP:   "0.0.0.0",
-					HostPort: fmt.Sprintf("%d", exposed+i-1),
-				},
-			}
-		}
-
-		vBindings := []string{}
-
-		for _, bind := range bindings {
-			vBindings = append(vBindings, fmt.Sprintf(bind, i))
-		}
-
-		hostConfig := &dcontainer.HostConfig{
-			PortBindings: natBindings,
-			Binds:        vBindings,
-			CapAdd:       caps,
-			RestartPolicy: dcontainer.RestartPolicy{
-				Name: dcontainer.RestartPolicyAlways,
+	for target, exposed := range ports {
+		natBindings[nat.Port(fmt.Sprint(target))] = []nat.PortBinding{
+			{
+				HostIP:   "0.0.0.0",
+				HostPort: fmt.Sprintf("%d", exposed),
 			},
 		}
+	}
 
+	vBindings := []string{}
+
+	for _, bind := range bindings {
+		vBindings = append(vBindings, fmt.Sprintf(bind, id))
+	}
+
+	hostConfig := &dcontainer.HostConfig{
+		Binds:  vBindings,
+		CapAdd: caps,
+		RestartPolicy: dcontainer.RestartPolicy{
+			Name: dcontainer.RestartPolicyAlways,
+		},
+	}
+
+	if networkName != hostNetworkName {
+		hostConfig.PortBindings = natBindings
 		_, err = cli.NetworkInspect(ctx, networkName, networktypes.InspectOptions{})
 		if err != nil {
 			_, err = cli.NetworkCreate(ctx, networkName, networktypes.CreateOptions{})
@@ -468,25 +499,28 @@ func CreateContainer(numContainers int, networkName, prefix, mysqlImage string, 
 		if err != nil {
 			panic(err)
 		}
+	}
 
-		if networkName != "" {
-			hostConfig.NetworkMode = dcontainer.NetworkMode(networkName)
+	if networkName != "" {
+		hostConfig.NetworkMode = dcontainer.NetworkMode(networkName)
+		if networkName == "host" {
+			hostConfig.NetworkMode = "host"
 		}
+	}
 
-		container.Pull(ctx, mysqlImage)
-		containerName := fmt.Sprintf("%s-%d", prefix, i)
-		resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
-		if err != nil {
-			if errdefs.IsConflict(err) {
-				fmt.Printf("Container already exists: %s\n", containerName)
-				return
-			}
-			panic(err)
+	container.Pull(ctx, mysqlImage)
+	containerName := fmt.Sprintf("%s-%d", prefix, id)
+	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, containerName)
+	if err != nil {
+		if errdefs.IsConflict(err) {
+			fmt.Printf("Container already exists: %s\n", containerName)
+			return
 		}
+		panic(err)
+	}
 
-		if err := cli.ContainerStart(ctx, resp.ID, dcontainer.StartOptions{}); err != nil {
-			panic(err)
-		}
+	if err := cli.ContainerStart(ctx, resp.ID, dcontainer.StartOptions{}); err != nil {
+		panic(err)
 	}
 }
 
@@ -896,20 +930,23 @@ func (c *Cluster) SetAsGroupReplica(shardIndex, repIndex int) error {
 			db.Close()
 		}
 	}()
-	dsn := fmt.Sprintf("root:root1234@tcp(127.0.0.1:%d)/mysql", 3306+repIndex)
+	dsn := fmt.Sprintf("root:root1234@tcp(127.0.0.1:%d)/mysql", mysqlPublicPort)
 	// Connect to specific node
 	db, err = sql.Open("mysql", dsn)
 	if err != nil {
-		return fmt.Errorf("Error connecting to database index %d: %v", repIndex, err)
+		return fmt.Errorf("error connecting to database index %d: %v", repIndex, err)
 	}
 
 	// Common setup queries for all nodes
 	queries := []string{
-		"SET SQL_LOG_BIN = 0",
 		"INSTALL PLUGIN group_replication SONAME 'group_replication.so'",
 		fmt.Sprintf("SET GLOBAL group_replication_group_name = '%s'", c.GroupName),
-		fmt.Sprintf("SET GLOBAL group_replication_local_address = '%s-db-rep-%d:%d'", c.DatabaseName, repIndex+1, groupRepPort),
-		fmt.Sprintf("SET GLOBAL group_replication_group_seeds = '%s'", strings.Join(c.GroupReplicationAddresses(shardIndex), ",")),
+		fmt.Sprintf("SET GLOBAL group_replication_local_address = '%s:%d'",
+			c.GroupReplicationHosts(shardIndex)[repIndex], groupRepPort),
+		fmt.Sprintf("SET GLOBAL group_replication_group_seeds = '%s'",
+			strings.Join(c.GroupReplicationAddresses(shardIndex), ",")),
+		fmt.Sprintf("SET GLOBAL group_replication_ip_allowlist = '172.18.0.0/16,127.0.0.1,%s'",
+			strings.Join(c.GroupReplicationHosts(shardIndex), ",")),
 		"SET SQL_LOG_BIN = 0",
 		"CREATE USER 'repl'@'%' IDENTIFIED with mysql_native_password BY 'strong_password'",
 		"GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'repl'@'%'",
@@ -922,6 +959,7 @@ func (c *Cluster) SetAsGroupReplica(shardIndex, repIndex int) error {
 		_, err := db.Exec(query)
 		if err != nil {
 			log.Printf("Error executing query on replica index %d: %v - Query: %s", repIndex, err, query)
+			return err
 		}
 	}
 
@@ -945,6 +983,7 @@ func (c *Cluster) SetAsGroupReplica(shardIndex, repIndex int) error {
 			_, err := db.Exec(query)
 			if err != nil {
 				log.Printf("Error executing secondary query on replica index %d: %v - Query: %s", repIndex, err, query)
+				return err
 			}
 		}
 	}
@@ -965,7 +1004,7 @@ func (c *Cluster) SetAsGroupReplica(shardIndex, repIndex int) error {
 	// Check replication status
 	rows, err := db.Query("SELECT * FROM performance_schema.replication_group_members")
 	if err != nil {
-		return fmt.Errorf("Error querying replication status on replica index %d: %v", repIndex, err)
+		return fmt.Errorf("error querying replication status on replica index %d: %v", repIndex, err)
 	}
 	defer rows.Close()
 

@@ -20,6 +20,9 @@ type Migration struct {
 
 func (m *Migration) Up(_ context.Context) error {
 	logger, err := util.Logger()
+	if err != nil {
+		return fmt.Errorf("failed to get logger: %w", err)
+	}
 	sqlDirExists, err := utils.PathExists(m.Directory)
 	if err != nil {
 		return fmt.Errorf("failed to check if directory exists: %w", err)
@@ -48,6 +51,9 @@ func (m *Migration) Up(_ context.Context) error {
 
 func (m *Migration) Down(_ context.Context) error {
 	logger, err := util.Logger()
+	if err != nil {
+		return fmt.Errorf("failed to get logger: %w", err)
+	}
 	sqlDirExists, err := utils.PathExists(m.Directory)
 	if err != nil {
 		return fmt.Errorf("failed to check if directory exists: %w", err)

@@ -2,6 +2,7 @@
 server_id={{ .ServerID }}
 bind-address = 0.0.0.0
 report_host = "{{ .ReportAddress }}"
+report_port = {{ .ReportPort }}
 gtid_mode=ON
 enforce_gtid_consistency=ON
 log_replica_updates=ON
