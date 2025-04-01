@@ -324,6 +324,39 @@ func joinCommand() *cli.Command {
 	}
 }
 
+func memCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "mem",
+		Usage: "Join to a remote cluster",
+		Flags: []cli.Flag{
+			&cli.Int64Flag{
+				Name:    "replica-index",
+				Aliases: []string{"n"},
+				Value:   0,
+				Usage:   "Replica ID, starting 0",
+			},
+			&cli.Int64Flag{
+				Name:    "shard-index",
+				Aliases: []string{"s"},
+				Value:   0,
+				Usage:   "Shared index, starting 0",
+			},
+			&cli.StringFlag{
+				Name:    "domain",
+				Aliases: []string{"d"},
+				Usage:   "The domain name, e.g. foo.com or foo.bar.com",
+				Value:   "zygote.run",
+			},
+		},
+		Action: func(c *cli.Context) error {
+			mem.RunExample()
+
+			return nil
+
+		},
+	}
+}
+
 func deinitCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "deinit",
@@ -1020,6 +1053,7 @@ func main() {
 			generateCommand(),
 			smokerCommand(),
 			joinCommand(),
+			memCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {

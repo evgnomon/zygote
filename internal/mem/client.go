@@ -1,0 +1,102 @@
+package mem
+
+import (
+	"bytes"
+	"compress/gzip"
+	"context"
+	"encoding/json"
+	"github.com/redis/go-redis/v9"
+	"log"
+)
+
+// CompressJSON compresses a Go value into gzip-compressed JSON bytes
+func CompressJSON(data interface{}) ([]byte, error) {
+	// Marshal to JSON
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Compress with gzip
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	_, err = gw.Write(jsonBytes)
+	if err != nil {
+		return nil, err
+	}
+	err = gw.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// DecompressJSON decompresses gzip-compressed JSON bytes into a Go value
+func DecompressJSON(compressed []byte, output interface{}) error {
+	gr, err := gzip.NewReader(bytes.NewReader(compressed))
+	if err != nil {
+		return err
+	}
+	defer gr.Close()
+
+	var decompressed bytes.Buffer
+	_, err = decompressed.ReadFrom(gr)
+	if err != nil {
+		return err
+	}
+
+	return json.Unmarshal(decompressed.Bytes(), output)
+}
+
+// StoreInRedis stores data in Redis
+func StoreInRedis(client *redis.ClusterClient, ctx context.Context, key string, value []byte) error {
+	return client.Set(ctx, key, value, 0).Err()
+}
+
+// RetrieveFromRedis retrieves data from Redis
+func RetrieveFromRedis(client *redis.ClusterClient, ctx context.Context, key string) ([]byte, error) {
+	return client.Get(ctx, key).Bytes()
+}
+
+func RunExample() {
+	// Initialize Redis client
+	ctx := context.Background()
+	client := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs: []string{"shard-a.zygote.run:6373", "shard-b.zygote.run:6373", "shard-c.zygote.run:6373"},
+	})
+
+	// Sample data
+	data := map[string]interface{}{
+		"key":     "value",
+		"numbers": []int{1, 2, 3, 4, 5},
+	}
+
+	// Compress the data
+	compressed, err := CompressJSON(data)
+	if err != nil {
+		log.Fatal("Failed to compress JSON:", err)
+	}
+
+	// Store in Redis
+	err = StoreInRedis(client, ctx, "mykey", compressed)
+	if err != nil {
+		log.Fatal("Failed to store in Redis:", err)
+	}
+
+	// Retrieve from Redis
+	retrieved, err := RetrieveFromRedis(client, ctx, "mykey")
+	if err != nil {
+		log.Fatal("Failed to retrieve from Redis:", err)
+	}
+
+	// Decompress and unmarshal
+	var originalData map[string]interface{}
+	err = DecompressJSON(retrieved, &originalData)
+	if err != nil {
+		log.Fatal("Failed to decompress JSON:", err)
+	}
+
+	// Log the result
+	log.Printf("Decompressed data: %+v\n", originalData)
+}
