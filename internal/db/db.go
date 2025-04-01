@@ -257,7 +257,7 @@ func CreateRouter(repIndex int, networkName string) {
 	)
 }
 
-type Cluster struct {
+type SQLShard struct {
 	Tenant       string
 	Domain       string
 	DatabaseName string
@@ -271,7 +271,7 @@ type Cluster struct {
 	ShardSize    int
 }
 
-func (c *Cluster) PublicEndpoints(shardIndex int) []string {
+func (c *SQLShard) PublicEndpoints(shardIndex int) []string {
 	if c.ShardSize == 0 {
 		return nil
 	}
@@ -285,7 +285,7 @@ func (c *Cluster) PublicEndpoints(shardIndex int) []string {
 	return addrs
 }
 
-func (c *Cluster) GroupReplicationAddresses(shardIndex int) []string {
+func (c *SQLShard) GroupReplicationAddresses(shardIndex int) []string {
 	if c.ShardSize == 0 {
 		return nil
 	}
@@ -299,7 +299,7 @@ func (c *Cluster) GroupReplicationAddresses(shardIndex int) []string {
 	return addrs
 }
 
-func (c *Cluster) GroupReplicationHosts(shardIndex int) []string {
+func (c *SQLShard) GroupReplicationHosts(shardIndex int) []string {
 	if c.ShardSize == 0 {
 		return nil
 	}
@@ -313,7 +313,7 @@ func (c *Cluster) GroupReplicationHosts(shardIndex int) []string {
 	return addrs
 }
 
-func (c *Cluster) DefaultValues() error {
+func (c *SQLShard) DefaultValues() error {
 	if c.ShardSize == 0 {
 		c.ShardSize = defaultShardSize
 	}
@@ -351,7 +351,7 @@ func (c *Cluster) DefaultValues() error {
 	return nil
 }
 
-func (c *Cluster) Create(ctx context.Context, shardIndex, repIndex int) error {
+func (c *SQLShard) Create(ctx context.Context, shardIndex, repIndex int) error {
 	err := c.DefaultValues()
 	if err != nil {
 		return err
@@ -370,7 +370,7 @@ func (c *Cluster) Create(ctx context.Context, shardIndex, repIndex int) error {
 	return nil
 }
 
-func (c *Cluster) CreateRouter(repIndex int) {
+func (c *SQLShard) CreateRouter(repIndex int) {
 	CreateContainer(
 		repIndex+1,
 		"host",
@@ -389,7 +389,7 @@ func (c *Cluster) CreateRouter(repIndex int) {
 	container.WaitHealthy(c.Tenant+"-db-router-", containerStartTimeout)
 }
 
-func (c *Cluster) CreateReplica(ctx context.Context, shardIndex, repIndex int) error {
+func (c *SQLShard) CreateReplica(ctx context.Context, shardIndex, repIndex int) error {
 	err := c.DefaultValues()
 	if err != nil {
 		return err
@@ -921,7 +921,7 @@ func SetupGroupReplication() {
 	}
 }
 
-func (c *Cluster) SetAsGroupReplica(shardIndex, repIndex int) error {
+func (c *SQLShard) SetAsGroupReplica(shardIndex, repIndex int) error {
 	// Database connection parameters (adjust as needed)
 	var db *sql.DB
 	var err error

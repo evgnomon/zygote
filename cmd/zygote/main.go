@@ -291,12 +291,35 @@ func joinCommand() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			logging, err := util.Logger()
+			if err != nil {
+				return err
+			}
 			ctx := context.Background()
-			var cl db.Cluster
+			var cl db.SQLShard
 			cl.Domain = c.String("domain")
 			cl.NetworkName = "host"
-			err := cl.Create(ctx, int(c.Int64("shard-index")), int(c.Int64("replica-index")))
-			return err
+			repIndex := int(c.Int64("replica-index"))
+			err = cl.Create(ctx, int(c.Int64("shard-index")), repIndex)
+			if err != nil {
+				return fmt.Errorf("failed to create shard: %w", err)
+			}
+			mc := mem.NewMemShard(cl.Domain)
+			err = mc.CreateReplica(repIndex)
+			if err != nil {
+				return fmt.Errorf("failed to create replica: %w", err)
+			}
+			for {
+				if repIndex == mc.ShardSize-1 {
+					err = mc.Init(ctx)
+					if err != nil {
+						logging.Warn("failed to init replica", zap.Error(err))
+						time.Sleep(2 * time.Second)
+						continue
+					}
+					return nil
+				}
+			}
 		},
 	}
 }

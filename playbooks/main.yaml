@@ -5,3 +5,63 @@
   roles:
     - z_build
     - z_dist
+
+- name: Define and use hosts
+  hosts: dynamic_shards
+  gather_facts: false
+  hosts: localhost
+  tasks:
+    - name: Add hosts dynamically
+      add_host:
+        name: "{{ item }}"
+        groups: dynamic_shards
+      loop:
+        - shard-a.zygote.run
+        - shard-b.zygote.run
+        - shard-c.zygote.run
+  tags: always
+
+- name: Just dist
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: evgnomon.catamaran.z_defaults
+  tasks:
+    - script: '{{ workspace }}/scripts/build'
+      args:
+        chdir: '{{ workspace }}'
+  tags: upload
+
+- name: Install
+  hosts: dynamic_shards
+  gather_facts: false
+  roles:
+    - role: evgnomon.catamaran.z_defaults
+  tasks:
+    - copy:
+        src: '{{ workspace }}/dist/z-linux-amd64'
+        dest: /usr/bin/z
+        mode: 0755
+    - file:
+        state: directory
+        path: /root/haha
+  vars:
+    ansible_ssh_user: root
+  tags: upload
+
+- name: Join
+  hosts: dynamic_shards
+  gather_facts: false
+  tasks:
+    - shell: |
+        z deinit -v
+        z join -d zygote.run -n {{ rep_table[inventory_hostname] }}
+      args:
+        chdir: /root/haha
+  vars:
+    rep_table:
+      shard-a.zygote.run: 0
+      shard-b.zygote.run: 1
+      shard-c.zygote.run: 2
+    ansible_ssh_user: root
+  tags: upload
