@@ -1,0 +1,23 @@
+z_os: >-
+  {{
+    {
+      'Darwin': 'darwin',
+      'Debian': 'linux',
+      'Windows': 'windows'
+    }[ansible_os_family] | default('')
+  }}
+z_arch: >-
+  {{
+    {
+      'x86_64': 'amd64',
+      'aarch64': 'arm64',
+      'i386': '386'
+    }[ansible_architecture] | default('')
+  }}
+
+rep_table:
+  shard-a.zygote.run: 0
+  shard-b.zygote.run: 1
+  shard-c.zygote.run: 2
+
+ansible_ssh_user: root

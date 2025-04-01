@@ -42,6 +42,7 @@ const routerReadWritePort = 16446
 const routerReadOnlyPort = 17447
 const defaultShardSize = 3
 const mysqlRouterConfTmplName = "router.conf"
+const maxMemClusterCreateRetry = 5
 
 func vaultCommand() *cli.Command {
 	return &cli.Command{
@@ -309,17 +310,21 @@ func joinCommand() *cli.Command {
 			if err != nil {
 				return fmt.Errorf("failed to create replica: %w", err)
 			}
-			for {
-				if repIndex == mc.ShardSize-1 {
+			count := 0
+
+			if repIndex == mc.ShardSize-1 {
+				for count < maxMemClusterCreateRetry {
 					err = mc.Init(ctx)
 					if err != nil {
 						logging.Warn("failed to init replica", zap.Error(err))
-						time.Sleep(2 * time.Second)
+						time.Sleep(1 * time.Second)
+						count++
 						continue
 					}
-					return nil
+					break
 				}
 			}
+			return nil
 		},
 	}
 }
@@ -348,11 +353,9 @@ func memCommand() *cli.Command {
 				Value:   "zygote.run",
 			},
 		},
-		Action: func(c *cli.Context) error {
+		Action: func(_ *cli.Context) error {
 			mem.RunExample()
-
 			return nil
-
 		},
 	}
 }

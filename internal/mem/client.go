@@ -5,12 +5,13 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"github.com/redis/go-redis/v9"
 	"log"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // CompressJSON compresses a Go value into gzip-compressed JSON bytes
-func CompressJSON(data interface{}) ([]byte, error) {
+func CompressJSON(data any) ([]byte, error) {
 	// Marshal to JSON
 	jsonBytes, err := json.Marshal(data)
 	if err != nil {
@@ -33,7 +34,7 @@ func CompressJSON(data interface{}) ([]byte, error) {
 }
 
 // DecompressJSON decompresses gzip-compressed JSON bytes into a Go value
-func DecompressJSON(compressed []byte, output interface{}) error {
+func DecompressJSON(compressed []byte, output any) error {
 	gr, err := gzip.NewReader(bytes.NewReader(compressed))
 	if err != nil {
 		return err
@@ -67,7 +68,7 @@ func RunExample() {
 	})
 
 	// Sample data
-	data := map[string]interface{}{
+	data := map[string]any{
 		"key":     "value",
 		"numbers": []int{1, 2, 3, 4, 5},
 	}
@@ -91,7 +92,7 @@ func RunExample() {
 	}
 
 	// Decompress and unmarshal
-	var originalData map[string]interface{}
+	var originalData map[string]any
 	err = DecompressJSON(retrieved, &originalData)
 	if err != nil {
 		log.Fatal("Failed to decompress JSON:", err)
