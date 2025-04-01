@@ -40,6 +40,8 @@ const varChar255 = "VARCHAR(255)"
 const dirPerm = 0755
 const routerReadWritePort = 16446
 const routerReadOnlyPort = 17447
+const defaultShardSize = 3
+const mysqlRouterConfTmplName = "router.conf"
 
 func vaultCommand() *cli.Command {
 	return &cli.Command{
@@ -180,11 +182,6 @@ func checkCommand() *cli.Command {
 }
 
 func migrateCommand() *cli.Command {
-	logger, err := util.Logger()
-	if err != nil {
-		panic(err)
-	}
-
 	return &cli.Command{
 		Name:  "migrate",
 		Usage: "Manage database migrations. Allows you to apply or revert changes to the database schema.",
@@ -217,7 +214,7 @@ func migrateCommand() *cli.Command {
 				Action: func(c *cli.Context) error {
 					ctx := context.Background()
 					m := NewMigration(c.String("directory"))
-					return m.Up(ctx, logger)
+					return m.Up(ctx)
 				},
 			},
 			{
@@ -226,7 +223,7 @@ func migrateCommand() *cli.Command {
 				Action: func(c *cli.Context) error {
 					ctx := context.Background()
 					m := NewMigration(c.String("directory"))
-					return m.Down(ctx, logger)
+					return m.Down(ctx)
 				},
 			},
 		},
@@ -234,10 +231,6 @@ func migrateCommand() *cli.Command {
 }
 
 func initCommand() *cli.Command {
-	logger, err := util.Logger()
-	if err != nil {
-		panic(err)
-	}
 	return &cli.Command{
 		Name:  "init",
 		Usage: "Initialize resources for the current repo",
@@ -258,10 +251,51 @@ func initCommand() *cli.Command {
 		Action: func(c *cli.Context) error {
 			ctx := context.Background()
 			if c.Bool("local") {
-				err := initSQLClusterLocal(ctx, logger, c.String("directory"))
+				err := initSQLClusterLocal(ctx, c.String("directory"))
 				return err
 			}
-			err := initContainers(ctx, logger, c.String("directory"))
+			err := initContainers(ctx, c.String("directory"))
+			return err
+		},
+	}
+}
+
+func joinCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "join",
+		Usage: "Join to a remote cluster",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "directory",
+				Aliases: []string{"C"},
+				Value:   "sqls",
+				Usage:   "Directory containing the SQL migration files.",
+			},
+			&cli.Int64Flag{
+				Name:    "replica-index",
+				Aliases: []string{"n"},
+				Value:   0,
+				Usage:   "Replica ID, starting 0",
+			},
+			&cli.Int64Flag{
+				Name:    "shard-index",
+				Aliases: []string{"s"},
+				Value:   0,
+				Usage:   "Shared index, starting 0",
+			},
+			&cli.StringFlag{
+				Name:     "domain",
+				Aliases:  []string{"d"},
+				Usage:    "The domain name, e.g. foo.com or foo.bar.com",
+				Required: true,
+			},
+		},
+		Action: func(c *cli.Context) error {
+			ctx := context.Background()
+			var cl db.Cluster
+			cl.Domain = c.String("domain")
+			cl.NetworkName = "host"
+			err := cl.Create(ctx, int(c.Int64("shard-index")), int(c.Int64("replica-index")))
 			return err
 		},
 	}
@@ -293,10 +327,6 @@ func deinitCommand() *cli.Command {
 }
 
 func runCommand() *cli.Command {
-	logger, err := util.Logger()
-	if err != nil {
-		panic(err)
-	}
 	return &cli.Command{
 		Name:  "run",
 		Usage: "Run the application",
@@ -321,7 +351,7 @@ func runCommand() *cli.Command {
 			if c.Bool("init") {
 				container.RemoveVolumePrefix("zygote-")
 			}
-			err := initContainers(context.Background(), logger, c.String("directory"))
+			err := initContainers(context.Background(), c.String("directory"))
 			return err
 		},
 	}
@@ -966,6 +996,7 @@ func main() {
 			sqlCommand(),
 			generateCommand(),
 			smokerCommand(),
+			joinCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
@@ -977,82 +1008,6 @@ func NewMigration(directory string) *migration.Migration {
 	return &migration.Migration{
 		Directory: directory,
 	}
-}
-
-func initContainers(ctx context.Context, logger *zap.Logger, directory string) error {
-	numShards := 2
-	dbName, err := utils.RepoFullName()
-	if err != nil {
-		return fmt.Errorf("failed to get repo full name: %w", err)
-	}
-	for i := 1; i <= numShards; i++ {
-		sqlParams := container.SQLInitParams{
-			DBName:   dbName,
-			Username: "admin",
-			Password: "password",
-		}
-		sqlStatements, err := container.ApplyTemplate("sql_init_template.sql", sqlParams)
-		if err != nil {
-			return err
-		}
-
-		container.Vol(sqlStatements, fmt.Sprintf("zygote-db-conf-%d", i), "/docker-entrypoint-initdb.d", "init.sql", container.AppNetworkName())
-	}
-	db.CreateDBContainer(2, container.AppNetworkName())
-	mem.CreateMemContainer(3, container.AppNetworkName())
-	container.InitRedisCluster()
-	container.WaitHealthy("zygote-", containerStartTimeout)
-	m := NewMigration(directory)
-	return m.Up(ctx, logger)
-}
-
-func initSQLClusterLocal(ctx context.Context, logger *zap.Logger, directory string) error {
-	numShards := 3
-	dbName, err := utils.RepoFullName()
-	if err != nil {
-		return fmt.Errorf("failed to get repo full name: %w", err)
-	}
-	for i := 1; i <= numShards; i++ {
-		sqlParams := container.InnoDBClusterParams{
-			ServerID:             i,
-			GroupReplicationPort: 33061,
-			ServerCount:          3,
-			ServersList:          "zygote-db-rep-1:33061,zygote-db-rep-2:33061,zygote-db-rep-3:33061",
-		}
-		innodbGroupReplication, err := container.ApplyTemplate("innodb_cluster_template.cnf", sqlParams)
-		if err != nil {
-			return err
-		}
-		sqlParams2 := container.SQLInitParams{
-			DBName:   dbName,
-			Username: "admin",
-			Password: "password",
-		}
-		sqlStatements, err := container.ApplyTemplate("sql_init_template.sql", sqlParams2)
-		if err != nil {
-			return err
-		}
-
-		routerConf, err := container.ApplyTemplate("router.conf", sqlParams2)
-		if err != nil {
-			return err
-		}
-
-		container.Vol(sqlStatements, fmt.Sprintf("zygote-db-conf-%d", i), "/docker-entrypoint-initdb.d", "init.sql", container.AppNetworkName())
-
-		container.Vol(innodbGroupReplication, fmt.Sprintf("zygote-db-conf-gr-%d", i), "/etc/mysql/conf.d/", "gr.cnf", container.AppNetworkName())
-
-		container.Vol(routerConf, fmt.Sprintf("zygote-db-router-conf-%d", i), "/etc/mysqlrouter/", "router.conf", container.AppNetworkName())
-	}
-	db.CreateGroupReplicationContainer(3, container.AppNetworkName())
-	container.WaitHealthy("zygote-", containerStartTimeout)
-	db.SetupGroupReplication()
-	db.CreateRouter(container.AppNetworkName())
-	container.WaitHealthy("zygote-", containerStartTimeout)
-	mem.CreateMemContainer(3, container.AppNetworkName())
-	container.InitRedisCluster()
-	m := NewMigration(directory)
-	return m.Up(ctx, logger)
 }
 
 func Call() (*resty.Client, error) {
@@ -1091,4 +1046,82 @@ func Call() (*resty.Client, error) {
 	client.SetTimeout(httpClientTimeout)
 
 	return client, nil
+}
+
+func initContainers(ctx context.Context, directory string) error {
+	numShards := 2
+	dbName, err := utils.RepoFullName()
+	if err != nil {
+		return fmt.Errorf("failed to get repo full name: %w", err)
+	}
+	for i := 1; i <= numShards; i++ {
+		sqlParams := container.SQLInitParams{
+			DBName:   dbName,
+			Username: "admin",
+			Password: "password",
+		}
+		sqlStatements, err := container.ApplyTemplate("sql_init_template.sql", sqlParams)
+		if err != nil {
+			return err
+		}
+
+		container.Vol(sqlStatements, fmt.Sprintf("zygote-db-conf-%d", i), "/docker-entrypoint-initdb.d", "init.sql", container.AppNetworkName())
+	}
+	db.CreateDBContainer(2, container.AppNetworkName())
+	mem.CreateMemContainer(3, container.AppNetworkName())
+	container.InitRedisCluster()
+	container.WaitHealthy("zygote-", containerStartTimeout)
+	m := NewMigration(directory)
+	return m.Up(ctx)
+}
+
+func initSQLClusterLocal(ctx context.Context, directory string) error {
+	dbName, err := utils.RepoFullName()
+	if err != nil {
+		return fmt.Errorf("failed to get repo full name: %w", err)
+	}
+	for i := 1; i <= defaultShardSize; i++ {
+		clusterParams := container.InnoDBClusterParams{
+			ServerID:             i,
+			GroupReplicationPort: 33061,
+			ServerCount:          3,
+			ServersList:          "zygote-db-rep-1:33061,zygote-db-rep-2:33061,zygote-db-rep-3:33061",
+			ReportAddress:        fmt.Sprintf("zygote-db-rep-%d", i),
+			ReportPort:           3306 + i - 1,
+		}
+		innodbGroupReplication, err := container.ApplyTemplate("innodb_cluster_template.cnf", clusterParams)
+		if err != nil {
+			return err
+		}
+		sqlParams := container.SQLInitParams{
+			DBName:   dbName,
+			Username: "admin",
+			Password: "password",
+		}
+		sqlStatements, err := container.ApplyTemplate("sql_init_template.sql", sqlParams)
+		if err != nil {
+			return err
+		}
+		routerConfParams := container.RouterConfParams{
+			Destinations: "zygote-db-rep-1:3306,zygote-db-rep-2:3306,zygote-db-rep-3:3306",
+		}
+		routerConf, err := container.ApplyTemplate(mysqlRouterConfTmplName, routerConfParams)
+		if err != nil {
+			return err
+		}
+		container.Vol(sqlStatements, fmt.Sprintf("zygote-db-conf-%d", i), "/docker-entrypoint-initdb.d", "init.sql", container.AppNetworkName())
+
+		container.Vol(innodbGroupReplication, fmt.Sprintf("zygote-db-conf-gr-%d", i), "/etc/mysql/conf.d/", "gr.cnf", container.AppNetworkName())
+
+		container.Vol(routerConf, fmt.Sprintf("zygote-db-router-conf-%d", i), "/etc/mysqlrouter/", "router.conf", container.AppNetworkName())
+	}
+	db.CreateGroupReplicationContainer(3, container.AppNetworkName())
+	container.WaitHealthy("zygote-", containerStartTimeout)
+	db.SetupGroupReplication()
+	db.CreateRouter(0, container.AppNetworkName())
+	container.WaitHealthy("zygote-", containerStartTimeout)
+	mem.CreateMemContainer(3, container.AppNetworkName())
+	container.InitRedisCluster()
+	m := NewMigration(directory)
+	return m.Up(ctx)
 }
