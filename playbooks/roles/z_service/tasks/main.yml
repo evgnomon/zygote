@@ -20,6 +20,10 @@
   register: binary_stat
   failed_when: not binary_stat.stat.exists
 
+- name: Set CAP_NET_BIND_SERVICE capability on binary
+  command: setcap 'cap_net_bind_service=+ep' {{ z_service_binary_path }}
+  become: true
+
 - name: Ensure working directory exists if specified
   file:
     path: "{{ z_service_working_dir }}"
@@ -55,3 +59,12 @@
     creates: "{{ z_service_cert_file }}"
   environment:
     ZYGOTE_CONFIG_HOME: "{{ z_service_working_dir }}"
+
+- name: Recursively set ownership of cert_dir to service user
+  ansible.builtin.file:
+    path: "{{ z_service_cert_dir }}"
+    owner: "{{ z_service_user }}"
+    group: "{{ z_service_group }}"
+    state: directory
+    recurse: true   # Recursively apply ownership to all contents
+  become: true
