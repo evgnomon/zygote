@@ -1,6 +1,6 @@
 ---
 - name: Create root certificate
-  command: "zygote cert root"
+  command: "z cert root"
   args:
     creates: "{{ zygote_home }}/certs/ca/ca_cert.pem"
   environment:

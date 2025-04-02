@@ -140,7 +140,7 @@ func (c *CertService) MakeRootCert(expiresAt time.Time) error {
 	return nil
 }
 
-func (c *CertService) Sign(domainName []string, expiresAt time.Time) error {
+func (c *CertService) Sign(domainName []string, expiresAt time.Time, password string) error {
 	caKeyPEM, err := os.ReadFile(filepath.Join(c.CaCertDir(), "ca_key.pem"))
 	if err != nil {
 		return err
@@ -214,10 +214,13 @@ func (c *CertService) Sign(domainName []string, expiresAt time.Time) error {
 	serverKeyOut.Close()
 
 	p12FilePath := filepath.Join(c.FunctionsCertDir(domainName[0]), fmt.Sprintf("%s.p12", domainName[0]))
-	err = utils.Run("openssl", "pkcs12", "-export", "-in", pubFilePath, "-inkey", keyFilePath, "-out", p12FilePath)
+	if password == "" {
+		err = utils.Run("openssl", "pkcs12", "-export", "-in", pubFilePath, "-inkey", keyFilePath, "-out", p12FilePath, "-passout", "pass:")
+	} else {
+		err = utils.Run("openssl", "pkcs12", "-export", "-in", pubFilePath, "-inkey", keyFilePath, "-out", p12FilePath)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create p12 file: %v", err)
 	}
-
 	return nil
 }

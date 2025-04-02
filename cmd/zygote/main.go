@@ -449,6 +449,11 @@ func certCommand() *cli.Command {
 						Aliases: []string{"n"},
 						Usage:   "Domain address",
 					},
+					&cli.StringFlag{
+						Name:    "password",
+						Aliases: []string{"p"},
+						Usage:   "Password for the certificate",
+					},
 				},
 				Action: func(c *cli.Context) error {
 					cs, err := cert.Cert()
@@ -460,7 +465,7 @@ func certCommand() *cli.Command {
 						return fmt.Errorf("name is required")
 					}
 
-					return cs.Sign([]string{c.String("name")}, time.Now().AddDate(1, 0, 0))
+					return cs.Sign([]string{c.String("name")}, time.Now().AddDate(1, 0, 0), c.String("password"))
 				},
 			},
 		},

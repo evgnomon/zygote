@@ -59,7 +59,7 @@ func main() {
 		}
 	})
 
-	port := os.Getenv("ZYGOTE_CONTROLLER_PORT")
+	port := os.Getenv("ZCORE_PORT")
 	if port == "" {
 		port = "8443"
 	}

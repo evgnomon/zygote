@@ -1,0 +1,10 @@
+---
+- name: Reload systemd
+  command: systemctl daemon-reload
+  become: yes
+
+- name: Restart z_service
+  systemd:
+    name: "{{ z_service_name }}"
+    state: restarted
+  become: yes

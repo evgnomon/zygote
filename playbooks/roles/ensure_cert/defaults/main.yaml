@@ -1,4 +1,0 @@
----
-zygote_user: "zygote"
-func_cert_dir: "{{ zygote_home }}/certs/functions/{{ func_name }}"
-zygote_ssh_key: "thunder"
