@@ -57,7 +57,21 @@ func main() {
 		// Start HTTP server for ACME challenges
 		go func() {
 			log.Printf("Starting HTTP server on :80 for Let's Encrypt challenges")
-			err := http.ListenAndServe(":80", certManager.HTTPHandler(nil))
+			// Create a new HTTP server with timeouts
+			server := &http.Server{
+				Addr:         ":80",
+				Handler:      certManager.HTTPHandler(nil),
+				ReadTimeout:  10 * time.Second, // Time limit for reading the entire request
+				WriteTimeout: 10 * time.Second, // Time limit for writing the response
+				IdleTimeout:  30 * time.Second, // Time limit for keep-alive connections
+			}
+
+			// Start the server
+			err := server.ListenAndServe()
+			if err != nil {
+				// Handle error
+				panic(err)
+			}
 			if err != nil {
 				log.Printf("HTTP server error: %v", err)
 			}
