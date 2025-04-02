@@ -14,7 +14,9 @@
   gather_facts: false
   roles:
     - z_deploy
-  tags: z_deploy
+  tags:
+    - z_deploy
+    - never
 
 - name: Deploy ZCore
   hosts: shards
@@ -34,4 +36,6 @@
           ZYGOTE_CONFIG_HOME: "/var/lib/zygote"
           ZCORE_PORT: 443
           ACME: true
-  tags: z_core
+  tags:
+    - z_core
+    - never
