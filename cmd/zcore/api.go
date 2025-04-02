@@ -108,6 +108,9 @@ func main() {
 		Handler:           e,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second, // Time limit for reading the entire request
+		WriteTimeout:      30 * time.Second, // Time limit for writing the response
+		IdleTimeout:       30 * time.Second, // Time limit for keep-alive connections
 	}
 
 	// Start the server
