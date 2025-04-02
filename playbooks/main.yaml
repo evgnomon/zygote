@@ -5,3 +5,37 @@
   roles:
     - z_build
     - z_dist
+    - z_add_shards
+  vars:
+    z_domain: zygote.run
+
+- name: Deploy
+  hosts: shards
+  gather_facts: false
+  roles:
+    - z_deploy
+  tags:
+    - z_deploy
+    - never
+
+- name: Deploy ZCore
+  hosts: shards
+  gather_facts: false
+  roles:
+    - role: z_service
+      vars:
+        z_service_name: "zcore"
+        z_service_binary_path: "/usr/bin/zcore"
+        z_service_description: "Zygote Core Daemon"
+        z_service_user: "zygote"
+        z_service_group: "zygote"
+        z_service_working_dir: "/var/lib/zygote"
+        z_service_domain: "shard-a.zygote.run"
+        z_service_env_vars:
+          ZCORE_DOMAIN: "shard-a.zygote.run"
+          ZYGOTE_CONFIG_HOME: "/var/lib/zygote"
+          ZCORE_PORT: 443
+          ACME: true
+  tags:
+    - z_core
+    - never

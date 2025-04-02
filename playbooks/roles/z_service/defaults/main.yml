@@ -1,10 +1,9 @@
 ---
-func_user: "{{ func_name }}"
-func_group: "{{ func_name }}"
-func_bin_file: /usr/local/bin/{{ func_name }}
-func_home: /var/lib/{{ func_name }}
-exec_start: "{{ func_bin_file }}"
-func_env:
-  ZYGOTE_CONFIG_HOME: /var/lib/{{ func_name }}
-  FUNC_HOME: "{{ func_name }}"
-  ZYGOTE_CONTROLLER_PORT: 443
+# Default variables for the z_service role
+z_service_working_dir: ""  # Empty by default, meaning no WorkingDirectory is set
+z_service_create_home: false  # Whether to create a home directory for the user
+z_service_state: "started"
+z_service_enabled: true
+z_service_env_vars: {}  # Default empty dict for environment variables
+z_service_cert_dir: "{{ z_service_working_dir }}/certs/functions/{{ z_service_domain }}"
+z_service_cert_file: "{{ z_service_cert_dir }}/{{ z_service_domain }}_cert.pem"

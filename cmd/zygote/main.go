@@ -42,6 +42,7 @@ const routerReadWritePort = 16446
 const routerReadOnlyPort = 17447
 const defaultShardSize = 3
 const mysqlRouterConfTmplName = "router.conf"
+const maxMemClusterCreateRetry = 5
 
 func vaultCommand() *cli.Command {
 	return &cli.Command{
@@ -291,12 +292,70 @@ func joinCommand() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
+			logging, err := util.Logger()
+			if err != nil {
+				return err
+			}
 			ctx := context.Background()
-			var cl db.Cluster
+			var cl db.SQLShard
 			cl.Domain = c.String("domain")
 			cl.NetworkName = "host"
-			err := cl.Create(ctx, int(c.Int64("shard-index")), int(c.Int64("replica-index")))
-			return err
+			repIndex := int(c.Int64("replica-index"))
+			err = cl.Create(ctx, int(c.Int64("shard-index")), repIndex)
+			if err != nil {
+				return fmt.Errorf("failed to create shard: %w", err)
+			}
+			mc := mem.NewMemShard(cl.Domain)
+			err = mc.CreateReplica(repIndex)
+			if err != nil {
+				return fmt.Errorf("failed to create replica: %w", err)
+			}
+			count := 0
+
+			if repIndex == mc.ShardSize-1 {
+				for count < maxMemClusterCreateRetry {
+					err = mc.Init(ctx)
+					if err != nil {
+						logging.Warn("failed to init replica", zap.Error(err))
+						time.Sleep(1 * time.Second)
+						count++
+						continue
+					}
+					break
+				}
+			}
+			return nil
+		},
+	}
+}
+
+func memCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "mem",
+		Usage: "Join to a remote cluster",
+		Flags: []cli.Flag{
+			&cli.Int64Flag{
+				Name:    "replica-index",
+				Aliases: []string{"n"},
+				Value:   0,
+				Usage:   "Replica ID, starting 0",
+			},
+			&cli.Int64Flag{
+				Name:    "shard-index",
+				Aliases: []string{"s"},
+				Value:   0,
+				Usage:   "Shared index, starting 0",
+			},
+			&cli.StringFlag{
+				Name:    "domain",
+				Aliases: []string{"d"},
+				Usage:   "The domain name, e.g. foo.com or foo.bar.com",
+				Value:   "zygote.run",
+			},
+		},
+		Action: func(_ *cli.Context) error {
+			mem.RunExample()
+			return nil
 		},
 	}
 }
@@ -390,6 +449,11 @@ func certCommand() *cli.Command {
 						Aliases: []string{"n"},
 						Usage:   "Domain address",
 					},
+					&cli.StringFlag{
+						Name:    "password",
+						Aliases: []string{"p"},
+						Usage:   "Password for the certificate",
+					},
 				},
 				Action: func(c *cli.Context) error {
 					cs, err := cert.Cert()
@@ -401,7 +465,7 @@ func certCommand() *cli.Command {
 						return fmt.Errorf("name is required")
 					}
 
-					return cs.Sign([]string{c.String("name")}, time.Now().AddDate(1, 0, 0))
+					return cs.Sign([]string{c.String("name")}, time.Now().AddDate(1, 0, 0), c.String("password"))
 				},
 			},
 		},
@@ -997,6 +1061,7 @@ func main() {
 			generateCommand(),
 			smokerCommand(),
 			joinCommand(),
+			memCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {

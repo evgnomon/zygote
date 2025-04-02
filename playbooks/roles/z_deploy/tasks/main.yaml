@@ -1,0 +1,17 @@
+---
+- copy:
+    src: '{{ workspace }}/dist/{{ item }}-{{ z_os }}-{{ z_arch }}'
+    dest: /usr/bin/{{ item }}
+    mode: 0755
+  with_items:
+    - z
+    - zcore
+- file:
+    state: directory
+    path: /root/haha
+
+- shell: |
+    z deinit -v
+    z join -d zygote.run -n {{ rep_table[inventory_hostname] }}
+  args:
+    chdir: /root/haha

@@ -1,4 +1,3 @@
----
 z_os: >-
   {{
     {
@@ -16,8 +15,9 @@ z_arch: >-
     }[ansible_architecture] | default('')
   }}
 
-zygote_user: zygote
-zygote_bin_prefix: /usr/local/bin
-zygote_releases: https://github.com/evgnomon/zygote/releases
-zcore_binary_file: "{{ zygote_bin_prefix }}/zcore"
-zycore_url: "{{ zygote_releases }}/download/v{{ zygote_version }}/zcore-{{ z_os }}-{{ z_arch }}"
+rep_table:
+  shard-a.zygote.run: 0
+  shard-b.zygote.run: 1
+  shard-c.zygote.run: 2
+
+ansible_ssh_user: root

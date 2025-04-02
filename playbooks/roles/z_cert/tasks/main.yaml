@@ -17,7 +17,7 @@
    mode: 0700
 
 - name: Sign service accounts
-  command: "zygote cert sign --name {{ func_name }}"
+  command: "z cert sign --name {{ func_name }}"
   args:
     creates: "{{ cert_file }}"
   environment:

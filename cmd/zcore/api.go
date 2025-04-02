@@ -7,10 +7,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/evgnomon/zygote/internal/cert"
-	"github.com/gin-gonic/gin"
+	"github.com/labstack/echo/v4"
+	"golang.org/x/crypto/acme/autocert"
 )
 
 func main() {
@@ -18,17 +20,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load server certificate: %v", err)
 	}
-	domainName := "zygote"
+	domainName := "myservice.zygote.run"
 
 	if os.Getenv("ZCORE_DOMAIN") != "" {
 		domainName = os.Getenv("ZCORE_DOMAIN")
 	}
-	serverCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
-	if err != nil {
-		log.Fatalf("Failed to load server certificate: %v", err)
-	}
 
-	// Load and trust the client CA certificate
+	// Load client CA certificate for client authentication
 	clientCACert, err := os.ReadFile(cs.CaCertFile())
 	if err != nil {
 		log.Fatalf("Failed to read client CA certificate: %v", err)
@@ -38,43 +36,90 @@ func main() {
 		log.Fatalf("Failed to append client CA certificate")
 	}
 
-	// Configure TLS to require client certificates
+	// Base TLS configuration with client authentication
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{serverCert},
-		ClientCAs:    clientCAs,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		MinVersion:   tls.VersionTLS12,
+		ClientCAs:  clientCAs,
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		MinVersion: tls.VersionTLS12,
 	}
 
-	// Create a new Gin router
-	router := gin.Default()
-
-	// Define a simple authenticated endpoint
-	router.GET("/", func(c *gin.Context) {
-		clientCert := c.Request.TLS.PeerCertificates
-		if len(clientCert) > 0 {
-			c.String(http.StatusOK, fmt.Sprintf("Hello, %s! You've been authenticated!\n", clientCert[0].Subject.CommonName))
-		} else {
-			c.String(http.StatusUnauthorized, "Unauthorized")
+	// Configure certificate handling based on ACME flag
+	useACME := strings.ToLower(os.Getenv("ACME")) == "true"
+	if useACME {
+		// Let's Encrypt configuration
+		certManager := autocert.Manager{
+			Prompt:     autocert.AcceptTOS,
+			HostPolicy: autocert.HostWhitelist(domainName),
+			Cache:      autocert.DirCache(cs.FunctionsCertDir(domainName)),
 		}
+		tlsConfig.GetCertificate = certManager.GetCertificate
+
+		// Start HTTP server for ACME challenges
+		go func() {
+			log.Printf("Starting HTTP server on :80 for Let's Encrypt challenges")
+			// Create a new HTTP server with timeouts
+			server := &http.Server{
+				Addr:         ":80",
+				Handler:      certManager.HTTPHandler(nil),
+				ReadTimeout:  10 * time.Second, // Time limit for reading the entire request
+				WriteTimeout: 10 * time.Second, // Time limit for writing the response
+				IdleTimeout:  30 * time.Second, // Time limit for keep-alive connections
+			}
+
+			// Start the server
+			err := server.ListenAndServe()
+			if err != nil {
+				// Handle error
+				panic(err)
+			}
+			if err != nil {
+				log.Printf("HTTP server error: %v", err)
+			}
+		}()
+	} else {
+		// Use local certificates
+		serverCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
+		if err != nil {
+			log.Fatalf("Failed to load server certificate: %v", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{serverCert}
+	}
+
+	// Create Echo instance
+	e := echo.New()
+
+	// Define authenticated endpoint
+	e.GET("/", func(c echo.Context) error {
+		clientCert := c.Request().TLS.PeerCertificates
+		if len(clientCert) > 0 {
+			return c.String(http.StatusOK, fmt.Sprintf("Hello, %s! You've been authenticated!\n", clientCert[0].Subject.CommonName))
+		}
+		return c.String(http.StatusUnauthorized, "Unauthorized")
 	})
 
-	port := os.Getenv("ZYGOTE_CONTROLLER_PORT")
+	port := os.Getenv("ZCORE_PORT")
 	if port == "" {
 		port = "8443"
 	}
 
-	// Create the HTTPS server with the TLS configuration
+	// Create HTTPS server
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%s", port),
-		Handler:           router,
+		Handler:           e,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second, // Time limit for reading the entire request
+		WriteTimeout:      30 * time.Second, // Time limit for writing the response
+		IdleTimeout:       30 * time.Second, // Time limit for keep-alive connections
 	}
 
-	// Start the HTTPS server
+	// Start the server
 	log.Printf("Starting server on https://%s:%s\n", domainName, port)
-	err = server.ListenAndServeTLS(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
+	if useACME {
+		err = server.ListenAndServeTLS("", "")
+	} else {
+		err = server.ListenAndServeTLS(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
+	}
 	if err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}

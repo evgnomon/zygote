@@ -1,48 +1,70 @@
 ---
-- name: Create user account for the program
-  become: true
+- name: Ensure service user exists
   user:
-    name: "{{ func_name }}"
-    comment: "{{ func_name }} user"
-    system: true
-    shell: /usr/sbin/nologin
-    createhome: false
-    state: present
+    name: "{{ z_service_user }}"
+    system: yes
+    create_home: "{{ z_service_create_home }}"
+    home: "{{ z_service_home_dir if z_service_create_home else omit }}"
+    shell: /sbin/nologin
+  become: yes
 
-- include_role:
-    name: ensure_cert
+- name: Ensure service group exists
+  group:
+    name: "{{ z_service_group }}"
+    system: yes
+  become: yes
 
-- template:
-    src: service.j2
-    dest: /etc/systemd/system/{{ func_name }}.service
+- name: Check if service binary exists
+  stat:
+    path: "{{ z_service_binary_path }}"
+  register: binary_stat
+  failed_when: not binary_stat.stat.exists
+
+- name: Set CAP_NET_BIND_SERVICE capability on binary
+  command: setcap 'cap_net_bind_service=+ep' {{ z_service_binary_path }}
+  become: true
+
+- name: Ensure working directory exists if specified
+  file:
+    path: "{{ z_service_working_dir }}"
+    state: directory
+    owner: "{{ z_service_user }}"
+    group: "{{ z_service_group }}"
+    mode: '0755'
+  when: z_service_working_dir != ""
+  become: yes
+
+- name: Deploy service file
+  template:
+    src: z_service.j2
+    dest: "/etc/systemd/system/{{ z_service_name }}.service"
     owner: root
     group: root
     mode: '0644'
+  become: yes
+  notify:
+    - Reload systemd
+    - Restart z_service
 
-- name: Ensure /var/lib directory exists for the program
-  become: true
-  file:
-    path: /var/lib/{{ func_name }}
+- name: Ensure service is enabled and in desired state
+  systemd:
+    name: "{{ z_service_name }}"
+    state: "{{ z_service_state }}"
+    enabled: "{{ z_service_enabled }}"
+  become: yes
+
+- name: Sign service accounts
+  command: "z cert sign --name {{ z_service_domain }}"
+  args:
+    creates: "{{ z_service_cert_file }}"
+  environment:
+    ZYGOTE_CONFIG_HOME: "{{ z_service_working_dir }}"
+
+- name: Recursively set ownership of cert_dir to service user
+  ansible.builtin.file:
+    path: "{{ z_service_cert_dir }}"
+    owner: "{{ z_service_user }}"
+    group: "{{ z_service_group }}"
     state: directory
-    owner: "{{ func_name }}"
-    group: "{{ func_name }}"
-    mode: 0755
-
-- name: Check if system has been booted with systemd
-  command: cat /proc/1/comm
-  register: init_system
-
-- name: reload systemd
+    recurse: true   # Recursively apply ownership to all contents
   become: true
-  when: init_system.stdout == "systemd"
-  command: systemctl daemon-reload
-
-- name: enable {{ func_name }}
-  become: true
-  when: init_system.stdout == "systemd"
-  command: systemctl enable {{ func_name }}.service
-
-- name: start {{ func_name }}
-  become: true
-  when: init_system.stdout == "systemd"
-  command: systemctl start {{ func_name }}.service
