@@ -12,7 +12,7 @@ import (
 	"github.com/evgnomon/zygote/internal/container"
 )
 
-const redisImage = "redis:7.0.11"
+const redisImage = "redis:7.4.2"
 const hostNetworkName = "host"
 const redisPort = 6373
 
