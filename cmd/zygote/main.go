@@ -18,7 +18,6 @@ import (
 	"time"
 
 	resty "github.com/go-resty/resty/v2"
-	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	cli "github.com/urfave/cli/v2"
 	"go.uber.org/zap"

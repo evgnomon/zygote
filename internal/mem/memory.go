@@ -10,7 +10,6 @@ import (
 	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
 	"github.com/evgnomon/zygote/internal/container"
-	_ "github.com/go-sql-driver/mysql"
 )
 
 const redisImage = "redis:7.0.11"
