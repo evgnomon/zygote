@@ -8,7 +8,9 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -448,6 +450,7 @@ func certCommand() *cli.Command {
 						Name:    "name",
 						Aliases: []string{"n"},
 						Usage:   "Domain address",
+						Value:   utils.User(),
 					},
 					&cli.StringFlag{
 						Name:    "password",
@@ -482,17 +485,122 @@ func callCommand() *cli.Command {
 				Aliases: []string{"u"},
 				Usage:   "URL to call",
 			},
+			&cli.StringFlag{
+				Name:    "method",
+				Aliases: []string{"m"},
+				Usage:   "HTTP method (GET, POST, PUT, DELETE, etc.)",
+				Value:   "GET", // Default to GET
+			},
+			&cli.StringFlag{
+				Name:  "content-type",
+				Usage: "Content type for the request",
+				Value: "application/json", // Default to JSON
+			},
 		},
 		Action: func(c *cli.Context) error {
 			u := c.String("url")
-			client, err := Call()
+			method := strings.ToUpper(c.String("method"))
+			contentType := c.String("content-type")
+			client, err := Call(utils.User())
 			if err != nil {
 				return err
 			}
-			r, err := client.R().Get(u)
+
+			req := client.R()
+
+			// Handle payload for POST and PUT from stdin
+			if method == "POST" || method == "PUT" {
+				// Read from stdin
+				payload, err := io.ReadAll(os.Stdin)
+				if err != nil {
+					return fmt.Errorf("failed to read from stdin: %v", err)
+				}
+				if len(payload) > 0 {
+					req = req.SetBody(payload).
+						SetHeader("Content-Type", contentType)
+				}
+			}
+
+			// Execute the request based on method
+			var r *resty.Response
+			switch method {
+			case "GET":
+				r, err = req.Get(u)
+			case "POST":
+				r, err = req.Post(u)
+			case "PUT":
+				r, err = req.Put(u)
+			case "DELETE":
+				r, err = req.Delete(u)
+			default:
+				return fmt.Errorf("unsupported HTTP method: %s", method)
+			}
+
 			if err != nil {
 				return err
 			}
+
+			fmt.Print(r.String())
+			return nil
+		},
+	}
+}
+
+type QueryRequest struct {
+	Query string `json:"query" form:"query"`
+}
+
+func qCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "q",
+		Usage: "Execute SHOW DATABASES query on zygote server",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "redis",
+				Aliases: []string{"r"},
+				Usage:   "Execute query as Redis command instead of SQL",
+			},
+			&cli.StringFlag{
+				Name:    "user",
+				Aliases: []string{"u"},
+				Usage:   "User name with sign certificate",
+				Value:   utils.User(),
+			},
+		},
+		Action: func(c *cli.Context) error {
+			const url = "https://zygote:8443/query"
+			query, err := io.ReadAll(os.Stdin)
+			queryType := "sql"
+			if c.Bool("redis") {
+				queryType = "redis"
+			}
+			if err != nil {
+				return fmt.Errorf("failed to read from stdin: %v", err)
+			}
+
+			p := QueryRequest{
+				Query: string(query),
+			}
+
+			// json.Marshal will handle all necessary escaping
+			payload, err := json.Marshal(p)
+			if err != nil {
+				return fmt.Errorf("failed to marshal payload: %v", err)
+			}
+
+			client, err := Call(c.String("user"))
+			if err != nil {
+				return err
+			}
+
+			r, err := client.R().
+				SetHeader("Content-Type", "application/json").
+				SetBody(payload).
+				Post(fmt.Sprintf("%s?type=%s", url, queryType))
+			if err != nil {
+				return err
+			}
+
 			fmt.Print(r.String())
 			return nil
 		},
@@ -1055,6 +1163,7 @@ func main() {
 			runCommand(),
 			certCommand(),
 			callCommand(),
+			qCommand(),
 			openDiffs(),
 			openActions(),
 			sqlCommand(),
@@ -1076,14 +1185,13 @@ func NewMigration(directory string) *migration.Migration {
 	}
 }
 
-func Call() (*resty.Client, error) {
+func Call(certName string) (*resty.Client, error) {
 	cs, err := cert.Cert()
 	if err != nil {
 		log.Fatalf("Failed to create cert service: %v", err)
 	}
 
-	clientName := "brave"
-	clientCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(clientName), cs.FunctionKeyFile(clientName))
+	clientCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(certName), cs.FunctionKeyFile(certName))
 	if err != nil {
 		return nil, err
 	}

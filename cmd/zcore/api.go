@@ -7,33 +7,61 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/evgnomon/zygote/internal/cert"
+	"github.com/evgnomon/zygote/internal/server"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/acme/autocert"
 )
 
-func main() {
+type Server struct {
+	e       *echo.Echo
+	cs      *cert.CertService
+	useACME bool
+	domain  string
+	port    int
+}
+
+func NewServer() (*Server, error) {
+	s := &Server{
+		e: echo.New(),
+	}
 	cs, err := cert.Cert()
 	if err != nil {
-		log.Fatalf("Failed to load server certificate: %v", err)
+		return nil, fmt.Errorf("failed to create cert service: %w", err)
 	}
-	domainName := "myservice.zygote.run"
-
+	s.cs = cs
+	s.domain = "myservice.zygote.run"
 	if os.Getenv("ZCORE_DOMAIN") != "" {
-		domainName = os.Getenv("ZCORE_DOMAIN")
+		s.domain = os.Getenv("ZCORE_DOMAIN")
 	}
 
+	// Configure certificate handling based on ACME flag
+	s.useACME = strings.ToLower(os.Getenv("ACME")) == "true"
+	port := os.Getenv("ZCORE_PORT")
+	if port == "" {
+		s.port = 8443
+	} else {
+		s.port, err = strconv.Atoi(port)
+		if err != nil {
+			return s, fmt.Errorf("failed to parse port: %w", err)
+		}
+	}
+
+	return s, nil
+}
+func (s *Server) tlsConfig() (*tls.Config, error) {
 	// Load client CA certificate for client authentication
-	clientCACert, err := os.ReadFile(cs.CaCertFile())
+	clientCACert, err := os.ReadFile(s.cs.CaCertFile())
 	if err != nil {
-		log.Fatalf("Failed to read client CA certificate: %v", err)
+		return nil, fmt.Errorf("failed to read client CA certificate: %w", err)
 	}
 	clientCAs := x509.NewCertPool()
 	if ok := clientCAs.AppendCertsFromPEM(clientCACert); !ok {
-		log.Fatalf("Failed to append client CA certificate")
+		return nil, fmt.Errorf("failed to append client CA certificate")
 	}
 
 	// Base TLS configuration with client authentication
@@ -43,14 +71,12 @@ func main() {
 		MinVersion: tls.VersionTLS12,
 	}
 
-	// Configure certificate handling based on ACME flag
-	useACME := strings.ToLower(os.Getenv("ACME")) == "true"
-	if useACME {
+	if s.useACME {
 		// Let's Encrypt configuration
 		certManager := autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist(domainName),
-			Cache:      autocert.DirCache(cs.FunctionsCertDir(domainName)),
+			HostPolicy: autocert.HostWhitelist(s.domain),
+			Cache:      autocert.DirCache(s.cs.FunctionsCertDir(s.domain)),
 		}
 		tlsConfig.GetCertificate = certManager.GetCertificate
 
@@ -78,34 +104,28 @@ func main() {
 		}()
 	} else {
 		// Use local certificates
-		serverCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
+		serverCert, err := tls.LoadX509KeyPair(
+			s.cs.FunctionCertFile(s.domain),
+			s.cs.FunctionKeyFile(s.domain),
+		)
 		if err != nil {
-			log.Fatalf("Failed to load server certificate: %v", err)
+			return nil, fmt.Errorf("failed to load server certificate: %w", err)
 		}
 		tlsConfig.Certificates = []tls.Certificate{serverCert}
 	}
+	return tlsConfig, nil
+}
 
-	// Create Echo instance
-	e := echo.New()
-
-	// Define authenticated endpoint
-	e.GET("/", func(c echo.Context) error {
-		clientCert := c.Request().TLS.PeerCertificates
-		if len(clientCert) > 0 {
-			return c.String(http.StatusOK, fmt.Sprintf("Hello, %s! You've been authenticated!\n", clientCert[0].Subject.CommonName))
-		}
-		return c.String(http.StatusUnauthorized, "Unauthorized")
-	})
-
-	port := os.Getenv("ZCORE_PORT")
-	if port == "" {
-		port = "8443"
+func (s *Server) Listen() error {
+	tlsConfig, err := s.tlsConfig()
+	if err != nil {
+		return fmt.Errorf("failed to create TLS config: %w", err)
 	}
 
-	// Create HTTPS server
-	server := &http.Server{
-		Addr:              fmt.Sprintf(":%s", port),
-		Handler:           e,
+	// Create HTTPS httpServer
+	httpServer := &http.Server{
+		Addr:              fmt.Sprintf(":%d", s.port),
+		Handler:           s.e,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second, // Time limit for reading the entire request
@@ -114,13 +134,50 @@ func main() {
 	}
 
 	// Start the server
-	log.Printf("Starting server on https://%s:%s\n", domainName, port)
-	if useACME {
-		err = server.ListenAndServeTLS("", "")
+	log.Printf("Starting server on https://%s:%d\n", s.domain, s.port)
+	if s.useACME {
+		err = httpServer.ListenAndServeTLS("", "")
 	} else {
-		err = server.ListenAndServeTLS(cs.FunctionCertFile(domainName), cs.FunctionKeyFile(domainName))
+		err = httpServer.ListenAndServeTLS(
+			s.cs.FunctionCertFile(s.domain),
+			s.cs.FunctionKeyFile(s.domain),
+		)
 	}
 	if err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+	return nil
+}
+
+func (s *Server) AddControllers(controllers []server.Controller) error {
+	for _, c := range controllers {
+		err := c.AddEndpoint("", s.e)
+		if err != nil {
+			return fmt.Errorf("failed to add endpoint: %w", err)
+		}
+	}
+	return nil
+}
+
+func main() {
+	s, err := NewServer()
+	if err != nil {
+		panic(fmt.Errorf("failed to create server: %v", err))
+	}
+	dbC, err := server.NewDatabaseController()
+	if err != nil {
+		panic(fmt.Errorf("failed to create database controller: %v", err))
+	}
+	hw := server.NewHelloWorldController()
+	err = s.AddControllers([]server.Controller{
+		dbC,
+		hw,
+	})
+	if err != nil {
+		panic(fmt.Errorf("failed to add controllers: %v", err))
+	}
+	err = s.Listen()
+	if err != nil {
+		panic(fmt.Errorf("failed to start server: %v", err))
 	}
 }
