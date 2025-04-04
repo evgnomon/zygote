@@ -1,4 +1,4 @@
-package server
+package controller
 
 import (
 	"database/sql"
@@ -12,23 +12,18 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-type Controller interface {
-	AddEndpoint(prefix string, e *echo.Echo) error
-	Close() error
-}
-
-type QueryRequest struct {
+type SQLQueryRequest struct {
 	Query string `json:"query" form:"query"`
 }
 
-type DatabaseController struct {
+type SQLQueryController struct {
 	config    *tables.ClientConfig
 	db        *sql.DB
 	mu        sync.Mutex // For thread-safe DB reconnection
 	lastCheck time.Time
 }
 
-func NewDatabaseController() (*DatabaseController, error) {
+func NewSQLQueryController() (*SQLQueryController, error) {
 	// Initialize database configuration
 	config := tables.NewClientConfig()
 
@@ -37,7 +32,7 @@ func NewDatabaseController() (*DatabaseController, error) {
 		config.Database = customDB
 	}
 
-	dc := &DatabaseController{
+	dc := &SQLQueryController{
 		config: tables.NewClientConfig(),
 	}
 
@@ -49,7 +44,7 @@ func NewDatabaseController() (*DatabaseController, error) {
 }
 
 // Close cleans up database resources
-func (dc *DatabaseController) Close() error {
+func (dc *SQLQueryController) Close() error {
 	dc.mu.Lock()
 	defer dc.mu.Unlock()
 	if dc.db != nil {
@@ -60,7 +55,7 @@ func (dc *DatabaseController) Close() error {
 }
 
 // ensureConnection checks and maintains database connection
-func (dc *DatabaseController) ensureConnection() error {
+func (dc *SQLQueryController) ensureConnection() error {
 	dc.mu.Lock()
 	defer dc.mu.Unlock()
 
@@ -94,7 +89,7 @@ func (dc *DatabaseController) ensureConnection() error {
 }
 
 // QueryHandler handles SQL query requests
-func (dc *DatabaseController) QueryHandler(c echo.Context) error {
+func (dc *SQLQueryController) QueryHandler(c echo.Context) error {
 	// Ensure we have a working connection
 	if err := dc.ensureConnection(); err != nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{
@@ -103,7 +98,7 @@ func (dc *DatabaseController) QueryHandler(c echo.Context) error {
 	}
 
 	// Parse request
-	var req QueryRequest
+	var req SQLQueryRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Invalid request format",
@@ -195,7 +190,7 @@ func (dc *DatabaseController) QueryHandler(c echo.Context) error {
 }
 
 // AddEndpoint configures the controller routes
-func (dc *DatabaseController) AddEndpoint(prefix string, e *echo.Echo) error {
+func (dc *SQLQueryController) AddEndpoint(prefix string, e *echo.Echo) error {
 	// Cleanup on server shutdown
 	e.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -203,6 +198,6 @@ func (dc *DatabaseController) AddEndpoint(prefix string, e *echo.Echo) error {
 			return next(c)
 		}
 	})
-	e.POST(fmt.Sprintf("%s/query", prefix), dc.QueryHandler)
+	e.POST(fmt.Sprintf("%s/queries/sql", prefix), dc.QueryHandler)
 	return nil
 }

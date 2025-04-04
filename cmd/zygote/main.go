@@ -21,6 +21,7 @@ import (
 
 	resty "github.com/go-resty/resty/v2"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/mattn/go-shellwords"
 	cli "github.com/urfave/cli/v2"
 	"go.uber.org/zap"
 	"golang.org/x/term"
@@ -28,6 +29,7 @@ import (
 	"github.com/evgnomon/zygote/cmd/zygote/commands"
 	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/evgnomon/zygote/internal/container"
+	"github.com/evgnomon/zygote/internal/controller"
 	"github.com/evgnomon/zygote/internal/db"
 	"github.com/evgnomon/zygote/internal/mem"
 	"github.com/evgnomon/zygote/internal/migration"
@@ -546,20 +548,11 @@ func callCommand() *cli.Command {
 	}
 }
 
-type QueryRequest struct {
-	Query string `json:"query" form:"query"`
-}
-
 func qCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "q",
-		Usage: "Execute SHOW DATABASES query on zygote server",
+		Usage: "Execute SQL query on a shard",
 		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:    "redis",
-				Aliases: []string{"r"},
-				Usage:   "Execute query as Redis command instead of SQL",
-			},
 			&cli.StringFlag{
 				Name:    "user",
 				Aliases: []string{"u"},
@@ -568,43 +561,75 @@ func qCommand() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			const url = "https://zygote:8443/query"
+			const url = "https://zygote:8443/queries/sql"
 			query, err := io.ReadAll(os.Stdin)
-			queryType := "sql"
-			if c.Bool("redis") {
-				queryType = "redis"
-			}
 			if err != nil {
 				return fmt.Errorf("failed to read from stdin: %v", err)
 			}
-
-			p := QueryRequest{
+			p := controller.SQLQueryRequest{
 				Query: string(query),
 			}
-
-			// json.Marshal will handle all necessary escaping
-			payload, err := json.Marshal(p)
-			if err != nil {
-				return fmt.Errorf("failed to marshal payload: %v", err)
-			}
-
-			client, err := Call(c.String("user"))
-			if err != nil {
-				return err
-			}
-
-			r, err := client.R().
-				SetHeader("Content-Type", "application/json").
-				SetBody(payload).
-				Post(fmt.Sprintf("%s?type=%s", url, queryType))
-			if err != nil {
-				return err
-			}
-
-			fmt.Print(r.String())
-			return nil
+			return sendAndPrint(url, c.String("user"), p)
 		},
 	}
+}
+
+func cCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "c",
+		Usage: "Execute Mem query on a shard",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "user",
+				Aliases: []string{"u"},
+				Usage:   "User name with sign certificate",
+				Value:   utils.User(),
+			},
+		},
+		Action: func(c *cli.Context) error {
+			const url = "https://zygote:8443/queries/mem"
+			query, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return fmt.Errorf("failed to read from stdin: %v", err)
+			}
+			if len(query) == 0 {
+				return fmt.Errorf("query cannot be empty")
+			}
+
+			parser := shellwords.NewParser()
+			parts, err := parser.Parse(string(query))
+			if err != nil {
+				return fmt.Errorf("failed to parse query: %v", err)
+			}
+			p := controller.RedisQueryRequest{
+				Query: parts,
+			}
+			return sendAndPrint(url, c.String("user"), p)
+		},
+	}
+}
+
+func sendAndPrint(url, user string, p any) error {
+	// json.Marshal will handle all necessary escaping
+	payload, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("failed to marshal payload: %v", err)
+	}
+
+	client, err := Call(user)
+	if err != nil {
+		return err
+	}
+
+	r, err := client.R().
+		SetHeader("Content-Type", "application/json").
+		SetBody(payload).
+		Post(url)
+	fmt.Print(r.String())
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func openDiffs() *cli.Command {
@@ -1172,6 +1197,7 @@ func main() {
 			joinCommand(),
 			memCommand(),
 			commands.Query(),
+			cCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
