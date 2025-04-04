@@ -23,6 +23,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/term"
 
+	"github.com/evgnomon/zygote/cmd/zygote/commands"
 	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/internal/db"
@@ -331,7 +332,7 @@ func joinCommand() *cli.Command {
 func memCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "mem",
-		Usage: "Join to a remote cluster",
+		Usage: "Get/Set memory values",
 		Flags: []cli.Flag{
 			&cli.Int64Flag{
 				Name:    "replica-index",
@@ -1061,6 +1062,7 @@ func main() {
 			smokerCommand(),
 			joinCommand(),
 			memCommand(),
+			commands.Query(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
