@@ -8,5 +8,11 @@
     - shard-a.{{ z_domain }}
     - shard-b.{{ z_domain }}
     - shard-c.{{ z_domain }}
+    - shard-a-1.{{ z_domain }}
+    - shard-b-1.{{ z_domain }}
+    - shard-c-1.{{ z_domain }}
+    - shard-a-2.{{ z_domain }}
+    - shard-b-2.{{ z_domain }}
+    - shard-c-2.{{ z_domain }}
   tags:
     - always
