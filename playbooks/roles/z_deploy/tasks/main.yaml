@@ -1,6 +1,6 @@
 ---
 - copy:
-    src: '{{ workspace }}/dist/{{ item }}-{{ z_os }}-{{ z_arch }}'
+    src: "{{ workspace }}/dist/{{ item }}-{{ z_os }}-{{ z_arch }}"
     dest: /usr/bin/{{ item }}
     mode: 0755
   with_items:
@@ -12,6 +12,6 @@
 
 - shell: |
     z deinit -v
-    z join -d zygote.run -n {{ rep_table[inventory_hostname] }}
+    z join -d zygote.run -n {{ rep_table[inventory_hostname]["rep-index"] }} -s {{ rep_table[inventory_hostname]["shard-index"] }} --num-shards 3 --shard-size 3
   args:
     chdir: /root/haha

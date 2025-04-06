@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ type RedisConfig struct {
 func NewRedisQueryController(config *RedisConfig) (*RedisQueryController, error) {
 	if config == nil {
 		config = &RedisConfig{
+			// The rest of nodes are discovered by the client
 			Addrs: []string{"shard-a.zygote.run:6373", "shard-b.zygote.run:6373", "shard-c.zygote.run:6373"},
 		}
 	}
@@ -164,6 +166,94 @@ func (rc *RedisQueryController) QueryHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// Add this new method to RedisQueryController
+func (rc *RedisQueryController) ClusterNodesHandler(c echo.Context) error {
+	if err := rc.ensureConnection(); err != nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"error": "Redis connection failed: " + err.Error(),
+		})
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), redisTimeout)
+	defer cancel()
+
+	// Get cluster nodes information
+	nodes, err := rc.client.ClusterNodes(ctx).Result()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Failed to get cluster nodes: " + err.Error(),
+		})
+	}
+
+	// Parse the nodes string into a more structured JSON response
+	type NodeInfo struct {
+		ID          string   `json:"id"`
+		Address     string   `json:"address"`
+		Flags       []string `json:"flags"`
+		Role        string   `json:"role"`
+		MasterID    string   `json:"masterId,omitempty"`
+		PingSent    int64    `json:"pingSent"`
+		PongRecv    int64    `json:"pongRecv"`
+		ConfigEpoch int64    `json:"configEpoch"`
+		LinkState   string   `json:"linkState"`
+		Slots       []string `json:"slots,omitempty"`
+	}
+
+	var clusterNodes []NodeInfo
+	lines := strings.Split(nodes, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Fields(line)
+		if len(parts) < 8 { //nolint:mnd
+			continue
+		}
+
+		flags := strings.Split(parts[2], ",")
+		role := "master"
+		if strings.Contains(parts[2], "slave") {
+			role = "slave"
+		}
+
+		node := NodeInfo{
+			ID:          parts[0],
+			Address:     parts[1],
+			Flags:       flags,
+			Role:        role,
+			MasterID:    parts[3],
+			PingSent:    parseInt(parts[4]),
+			PongRecv:    parseInt(parts[5]),
+			ConfigEpoch: parseInt(parts[6]),
+			LinkState:   parts[7],
+		}
+
+		// Add slots if present (for master nodes)
+		if len(parts) > 8 { //nolint:mnd
+			node.Slots = parts[8:]
+		}
+
+		clusterNodes = append(clusterNodes, node)
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"nodes": clusterNodes,
+		"count": len(clusterNodes),
+	})
+}
+
+// Helper function to parse integers safely
+func parseInt(s string) int64 {
+	val, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return val
+}
+
+// Modify the AddEndpoint method to include the new endpoint
 func (rc *RedisQueryController) AddEndpoint(prefix string, e *echo.Echo) error {
 	e.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -171,6 +261,7 @@ func (rc *RedisQueryController) AddEndpoint(prefix string, e *echo.Echo) error {
 			return next(c)
 		}
 	})
-	e.POST(fmt.Sprintf("%s/queries/mem", prefix), rc.QueryHandler)
+	e.POST(fmt.Sprintf("%s/mem/query", prefix), rc.QueryHandler)
+	e.GET(fmt.Sprintf("%s/mem/cluster/node", prefix), rc.ClusterNodesHandler) // New endpoint
 	return nil
 }

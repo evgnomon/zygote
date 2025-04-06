@@ -42,9 +42,6 @@
     group: root
     mode: '0644'
   become: yes
-  notify:
-    - Reload systemd
-    - Restart z_service
 
 - name: Ensure service is enabled and in desired state
   systemd:
@@ -68,3 +65,13 @@
     state: directory
     recurse: true   # Recursively apply ownership to all contents
   become: true
+
+- name: Reload systemd
+  command: systemctl daemon-reload
+  become: yes
+
+- name: Restart z_service
+  systemd:
+    name: "{{ z_service_name }}"
+    state: restarted
+  become: yes

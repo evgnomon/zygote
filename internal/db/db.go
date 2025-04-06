@@ -389,6 +389,13 @@ func (c *SQLShard) CreateRouter(repIndex int) {
 	container.WaitHealthy(c.Tenant+"-db-router-", containerStartTimeout)
 }
 
+func (c *SQLShard) reportAddress(shardIndex, repIndex int) string {
+	if shardIndex == 0 {
+		return fmt.Sprintf("shard-%s.%s", string('a'+rune(repIndex)), c.Domain)
+	}
+	return fmt.Sprintf("shard-%s-%d.%s", string('a'+rune(repIndex)), shardIndex, c.Domain)
+}
+
 func (c *SQLShard) CreateReplica(ctx context.Context, shardIndex, repIndex int) error {
 	err := c.DefaultValues()
 	if err != nil {
@@ -399,7 +406,7 @@ func (c *SQLShard) CreateReplica(ctx context.Context, shardIndex, repIndex int) 
 		GroupReplicationPort: groupRepPort,
 		ServerCount:          c.ShardSize,
 		ServersList:          strings.Join(c.GroupReplicationAddresses(shardIndex), ","),
-		ReportAddress:        fmt.Sprintf("shard-%s.%s", string('a'+rune(repIndex)), c.Domain),
+		ReportAddress:        c.reportAddress(shardIndex, repIndex),
 		ReportPort:           mysqlPublicPort,
 	}
 	innodbGroupReplication, err := container.ApplyTemplate(clusterTmplName, sqlParams)

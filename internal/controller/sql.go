@@ -198,6 +198,6 @@ func (dc *SQLQueryController) AddEndpoint(prefix string, e *echo.Echo) error {
 			return next(c)
 		}
 	})
-	e.POST(fmt.Sprintf("%s/queries/sql", prefix), dc.QueryHandler)
+	e.POST(fmt.Sprintf("%s/sql/query", prefix), dc.QueryHandler)
 	return nil
 }

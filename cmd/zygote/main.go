@@ -39,6 +39,7 @@ import (
 
 const containerStartTimeout = 20 * time.Second
 const httpClientTimeout = 10 * time.Second
+const redisRetryInterval = 10 * time.Second
 const editor = "vi"
 const varChar255 = "VARCHAR(255)"
 const dirPerm = 0755
@@ -276,17 +277,27 @@ func joinCommand() *cli.Command {
 				Value:   "sqls",
 				Usage:   "Directory containing the SQL migration files.",
 			},
-			&cli.Int64Flag{
-				Name:    "replica-index",
-				Aliases: []string{"n"},
-				Value:   0,
-				Usage:   "Replica ID, starting 0",
+			&cli.IntFlag{
+				Name:     "replica-index",
+				Aliases:  []string{"n"},
+				Required: true,
+				Usage:    "Replica ID, starting 0",
 			},
-			&cli.Int64Flag{
-				Name:    "shard-index",
-				Aliases: []string{"s"},
-				Value:   0,
-				Usage:   "Shared index, starting 0",
+			&cli.IntFlag{
+				Name:     "shard-index",
+				Aliases:  []string{"s"},
+				Required: true,
+				Usage:    "Shared index, starting 0",
+			},
+			&cli.IntFlag{
+				Name:  "num-shards",
+				Value: 1,
+				Usage: "number of shards",
+			},
+			&cli.IntFlag{
+				Name:  "shard-size",
+				Value: 3,
+				Usage: "number of nodes in a shard",
 			},
 			&cli.StringFlag{
 				Name:     "domain",
@@ -296,7 +307,7 @@ func joinCommand() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			logging, err := util.Logger()
+			_, err := util.Logger()
 			if err != nil {
 				return err
 			}
@@ -304,24 +315,29 @@ func joinCommand() *cli.Command {
 			var cl db.SQLShard
 			cl.Domain = c.String("domain")
 			cl.NetworkName = "host"
-			repIndex := int(c.Int64("replica-index"))
-			err = cl.Create(ctx, int(c.Int64("shard-index")), repIndex)
+			repIndex := c.Int("replica-index")
+			err = cl.Create(ctx, c.Int("shard-index"), repIndex)
 			if err != nil {
 				return fmt.Errorf("failed to create shard: %w", err)
 			}
 			mc := mem.NewMemShard(cl.Domain)
+			mc.NumShards = c.Int("num-shards")
+			mc.ShardSize = c.Int("shard-size")
 			err = mc.CreateReplica(repIndex)
 			if err != nil {
 				return fmt.Errorf("failed to create replica: %w", err)
 			}
 			count := 0
-
-			if repIndex == mc.ShardSize-1 {
+			logging, err := util.Logger()
+			if err != nil {
+				return fmt.Errorf("failed to create logger: %w", err)
+			}
+			if repIndex == 0 && c.Int("shard-index") == 0 {
 				for count < maxMemClusterCreateRetry {
 					err = mc.Init(ctx)
 					if err != nil {
 						logging.Warn("failed to init replica", zap.Error(err))
-						time.Sleep(1 * time.Second)
+						time.Sleep(redisRetryInterval)
 						count++
 						continue
 					}
@@ -503,7 +519,8 @@ func callCommand() *cli.Command {
 			u := c.String("url")
 			method := strings.ToUpper(c.String("method"))
 			contentType := c.String("content-type")
-			client, err := Call(utils.User())
+			hc := NewHTTPTransportConfig()
+			client, err := hc.Client()
 			if err != nil {
 				return err
 			}
@@ -551,7 +568,7 @@ func callCommand() *cli.Command {
 func qCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "q",
-		Usage: "Execute SQL query on a shard",
+		Usage: "Execute SQL query over HTTPs",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "user",
@@ -561,7 +578,14 @@ func qCommand() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			const url = "https://zygote:8443/queries/sql"
+			server := c.Args().Get(0)
+			if server == "" {
+				return fmt.Errorf("valid host is required")
+			}
+			if !strings.Contains(server, ":") {
+				server = fmt.Sprintf("%s:443", server)
+			}
+			url := fmt.Sprintf("https://%s/sql/query", server)
 			query, err := io.ReadAll(os.Stdin)
 			if err != nil {
 				return fmt.Errorf("failed to read from stdin: %v", err)
@@ -569,7 +593,7 @@ func qCommand() *cli.Command {
 			p := controller.SQLQueryRequest{
 				Query: string(query),
 			}
-			return sendAndPrint(url, c.String("user"), p)
+			return sendAndPrint(url, server, c.String("user"), p)
 		},
 	}
 }
@@ -587,7 +611,14 @@ func cCommand() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			const url = "https://zygote:8443/queries/mem"
+			server := c.Args().Get(0)
+			if server == "" {
+				server = "zygote:8443"
+			}
+			if !strings.Contains(server, ":") {
+				server = fmt.Sprintf("%s:443", server)
+			}
+			url := fmt.Sprintf("https://%s/mem/query", server)
 			query, err := io.ReadAll(os.Stdin)
 			if err != nil {
 				return fmt.Errorf("failed to read from stdin: %v", err)
@@ -604,19 +635,21 @@ func cCommand() *cli.Command {
 			p := controller.RedisQueryRequest{
 				Query: parts,
 			}
-			return sendAndPrint(url, c.String("user"), p)
+			return sendAndPrint(url, server, c.String("user"), p)
 		},
 	}
 }
 
-func sendAndPrint(url, user string, p any) error {
+func sendAndPrint(url, server, user string, p any) error {
 	// json.Marshal will handle all necessary escaping
 	payload, err := json.Marshal(p)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %v", err)
 	}
+	domain := strings.Split(server, ":")[0]
+	t := NewHTTPTransportConfigForUserHost(user, domain)
 
-	client, err := Call(user)
+	client, err := t.Client()
 	if err != nil {
 		return err
 	}
@@ -1116,40 +1149,40 @@ func smokerCommand() *cli.Command {
 			}()
 
 			defer func() {
-				err = utils.Script([][]string{[]string{"sudo", zygotePath, "deinit", "-v"}}) //nolint:gofmt
+				err = utils.Script([][]string{{"sudo", zygotePath, "deinit", "-v"}})
 				if err != nil {
 					panic(fmt.Errorf("failed to run smoke tests: %w", err))
 				}
 			}()
 			err = utils.Script([][]string{
-				[]string{"rm", "-rf", "./sqls"}, //nolint:gofmt
-				[]string{"sudo", zygotePath, "deinit", "-v"},
-				[]string{"sudo", zygotePath, "init"},
-				[]string{"sudo", "-K"},
-				[]string{zygotePath, "gen", "db", "--name=smokers"},
-				[]string{zygotePath, "gen", "table", "--name=users"},
-				[]string{zygotePath, "gen", "table", "--name=posts"},
-				[]string{zygotePath, "gen", "table", "--name=comments"},
-				[]string{zygotePath, "gen", "col", "--table=users", "--name=name"},
-				[]string{zygotePath, "gen", "col", "--table=users", "--name=email", "--type=string"},
-				[]string{zygotePath, "gen", "index", "--table=users", "--name=email", "--col=email", "-u"},
-				[]string{zygotePath, "gen", "index", "--table=users", "--name", "users_name", "--col", "email", "--col", "name"},
-				[]string{zygotePath, "gen", "col", "--table=users", "--name=active", "--type=bool"},
-				[]string{zygotePath, "gen", "col", "--table=users", "--name=pic", "--type=binary"},
-				[]string{zygotePath, "gen", "col", "--table=users", "--name=age", "--type=double"},
-				[]string{zygotePath, "gen", "col", "--table=posts", "--name=title"},
-				[]string{zygotePath, "gen", "col", "--table=posts", "--name=uuid", "--type=uuid"},
-				[]string{zygotePath, "gen", "col", "--table=posts", "--name=content", "--type=text"},
-				[]string{zygotePath, "gen", "col", "--table=posts", "--name=views", "--type=integer"},
-				[]string{zygotePath, "gen", "col", "--table=posts", "--name=tags", "--type=json"},
-				[]string{zygotePath, "gen", "prop", "--table=posts", "--name=tag", "--type=string", "--path=$.name"},
-				[]string{zygotePath, "gen", "index", "--table=posts", "--name=tags", "--col=tag", "--col=uuid"},
-				[]string{zygotePath, "gen", "index", "-t", "posts", "-n", "content", "--col=content", "--full-text"},
-				[]string{zygotePath, "migrate", "up"},
-				[]string{zygotePath, "migrate", "down"},
-				[]string{zygotePath, "migrate", "up"},
-				[]string{zygotePath, "migrate", "down"},
-				[]string{zygotePath, "migrate", "up"},
+				{"rm", "-rf", "./sqls"},
+				{"sudo", zygotePath, "deinit", "-v"},
+				{"sudo", zygotePath, "init"},
+				{"sudo", "-K"},
+				{zygotePath, "gen", "db", "--name=smokers"},
+				{zygotePath, "gen", "table", "--name=users"},
+				{zygotePath, "gen", "table", "--name=posts"},
+				{zygotePath, "gen", "table", "--name=comments"},
+				{zygotePath, "gen", "col", "--table=users", "--name=name"},
+				{zygotePath, "gen", "col", "--table=users", "--name=email", "--type=string"},
+				{zygotePath, "gen", "index", "--table=users", "--name=email", "--col=email", "-u"},
+				{zygotePath, "gen", "index", "--table=users", "--name", "users_name", "--col", "email", "--col", "name"},
+				{zygotePath, "gen", "col", "--table=users", "--name=active", "--type=bool"},
+				{zygotePath, "gen", "col", "--table=users", "--name=pic", "--type=binary"},
+				{zygotePath, "gen", "col", "--table=users", "--name=age", "--type=double"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=title"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=uuid", "--type=uuid"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=content", "--type=text"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=views", "--type=integer"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=tags", "--type=json"},
+				{zygotePath, "gen", "prop", "--table=posts", "--name=tag", "--type=string", "--path=$.name"},
+				{zygotePath, "gen", "index", "--table=posts", "--name=tags", "--col=tag", "--col=uuid"},
+				{zygotePath, "gen", "index", "-t", "posts", "-n", "content", "--col=content", "--full-text"},
+				{zygotePath, "migrate", "up"},
+				{zygotePath, "migrate", "down"},
+				{zygotePath, "migrate", "up"},
+				{zygotePath, "migrate", "down"},
+				{zygotePath, "migrate", "up"},
 			})
 
 			if err != nil {
@@ -1211,24 +1244,52 @@ func NewMigration(directory string) *migration.Migration {
 	}
 }
 
-func Call(certName string) (*resty.Client, error) {
+type HTTPTransportConfig struct {
+	caCertFile   string
+	funcCertFile string
+	funcKeyFile  string
+}
+
+func NewHTTPTransportConfig() *HTTPTransportConfig {
 	cs, err := cert.Cert()
 	if err != nil {
 		log.Fatalf("Failed to create cert service: %v", err)
 	}
+	return &HTTPTransportConfig{
+		caCertFile:   cs.CaCertFile(),
+		funcCertFile: cs.FunctionCertFile(utils.User()),
+		funcKeyFile:  cs.FunctionKeyFile(utils.User()),
+	}
+}
 
-	clientCert, err := tls.LoadX509KeyPair(cs.FunctionCertFile(certName), cs.FunctionKeyFile(certName))
+func NewHTTPTransportConfigForUserHost(userName, domain string) *HTTPTransportConfig {
+	cs, err := cert.Cert()
+	if err != nil {
+		log.Fatalf("Failed to create cert service: %v", err)
+	}
+	return &HTTPTransportConfig{
+		caCertFile:   cs.CaCertFileForDomain(domain),
+		funcCertFile: cs.FunctionCertFile(userName),
+		funcKeyFile:  cs.FunctionKeyFile(userName),
+	}
+}
+
+func (s *HTTPTransportConfig) Client() (*resty.Client, error) {
+	serverCACert, err := os.ReadFile(s.caCertFile) // The CA that signed the server's certificate
 	if err != nil {
 		return nil, err
 	}
-
-	serverCACert, err := os.ReadFile(cs.CaCertFile()) // The CA that signed the server's certificate
+	systemCAs, err := x509.SystemCertPool()
 	if err != nil {
 		return nil, err
 	}
-
-	serverCAs := x509.NewCertPool()
+	serverCAs := systemCAs.Clone()
 	if ok := serverCAs.AppendCertsFromPEM(serverCACert); !ok {
+		return nil, fmt.Errorf("failed to append server CA cert")
+	}
+
+	clientCert, err := tls.LoadX509KeyPair(s.funcCertFile, s.funcKeyFile)
+	if err != nil {
 		return nil, err
 	}
 
@@ -1244,7 +1305,6 @@ func Call(certName string) (*resty.Client, error) {
 	})
 
 	client.SetTimeout(httpClientTimeout)
-
 	return client, nil
 }
 

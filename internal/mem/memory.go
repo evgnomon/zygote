@@ -21,15 +21,11 @@ type MemShard struct {
 	Domain      string
 	NetworkName string
 	ShardSize   int
+	NumShards   int
 }
 
 func NewMemShard(domain string) *MemShard {
-	m := MemShard{
-		Tenant:      "",
-		Domain:      domain,
-		NetworkName: hostNetworkName,
-		ShardSize:   0,
-	}
+	m := MemShard{}
 	m.Domain = domain
 	m.NetworkName = hostNetworkName
 	m.ShardSize = 3
@@ -98,21 +94,26 @@ func (m *MemShard) CreateReplica(repIndex int) error {
 	return nil
 }
 
+// redis-cli --cluster create shard-a.zygote.run:6373 shard-a-1.zygote.run:6373 shard-a-2.zygote.run:6373 --cluster-replicas 0 --cluster-yes
 func (m *MemShard) createRedisClusterCommand() []string {
 	// Base command parts
 	cmd := []string{"redis-cli", "--cluster", "create"}
-
 	// Generate shard hostnames based on shardSize
-	for i := 0; i < m.ShardSize; i++ {
+	for i := 0; i < m.ShardSize*m.NumShards; i++ {
 		// Convert shard number to letter (a=0, b=1, c=2, etc.)
-		shardLetter := string('a' + rune(i))
-		hostname := "shard-" + shardLetter + "." + m.Domain + ":6373"
-		cmd = append(cmd, hostname)
+		shardLetter := string('a' + rune(i/m.NumShards))
+		var host string
+		if i%m.NumShards == 0 {
+			host = fmt.Sprintf("shard-%s.%s:6373", shardLetter, m.Domain)
+			cmd = append(cmd, host)
+			continue
+		}
+		host = fmt.Sprintf("shard-%s-%d.%s:6373", shardLetter, i%m.NumShards, m.Domain)
+		cmd = append(cmd, host)
 	}
 
 	// Add replica and confirmation flags
-	cmd = append(cmd, "--cluster-replicas", "0", "--cluster-yes")
-
+	cmd = append(cmd, "--cluster-replicas", fmt.Sprintf("%d", m.ShardSize-1), "--cluster-yes")
 	return cmd
 }
 
@@ -124,8 +125,7 @@ func (m *MemShard) Init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create docker client: %w", err)
 	}
-	container.Spawn(ctx, client, redisImage, m.createRedisClusterCommand(), portMap, hostNetworkName)
-	return nil
+	return container.SpawnAndWait(ctx, client, redisImage, m.createRedisClusterCommand(), portMap, hostNetworkName)
 }
 
 func CreateMemContainer(numShards int, networkName string) {

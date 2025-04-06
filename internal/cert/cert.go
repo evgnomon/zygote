@@ -57,6 +57,15 @@ func (c *CertService) CaCertFile() string {
 	return filepath.Join(c.CaCertDir(), "ca_cert.pem")
 }
 
+// Get ca cert file path
+func (c *CertService) CaCertFileForDomain(domain string) string {
+	f := filepath.Join(c.CaCertDir(), fmt.Sprintf("%s.pem", domain))
+	if _, err := os.Stat(f); os.IsNotExist(err) {
+		return c.CaCertFile()
+	}
+	return f
+}
+
 func (c *CertService) FunctionsCertDir(name string) string {
 	p := filepath.Join(c.ConfigHome, "certs", "functions", name)
 	if _, err := os.Stat(p); os.IsNotExist(err) {

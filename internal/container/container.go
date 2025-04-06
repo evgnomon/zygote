@@ -109,6 +109,76 @@ func Spawn(ctx context.Context,
 	}
 }
 
+func SpawnAndWait(ctx context.Context,
+	cli *client.Client,
+	name string,
+	cmd []string,
+	portMap map[string]string,
+	networkName string,
+) error { // Return error instead of panicking
+	config := &containertypes.Config{
+		Image:        name,
+		Cmd:          cmd,
+		AttachStdout: true,
+	}
+	portBindings := nat.PortMap{}
+	for containerPort, hostPort := range portMap {
+		portBindings[nat.Port(containerPort)] = []nat.PortBinding{
+			{HostIP: "0.0.0.0", HostPort: hostPort},
+		}
+	}
+	hostConfig := &containertypes.HostConfig{
+		AutoRemove:   true,
+		PortBindings: portBindings,
+	}
+	if networkName != "" {
+		hostConfig.NetworkMode = containertypes.NetworkMode(networkName)
+	}
+
+	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, "")
+	if err != nil {
+		return fmt.Errorf("failed to create container: %v", err)
+	}
+
+	attachOptions := containertypes.AttachOptions{
+		Stream: true,
+		Stdout: true,
+		Stderr: true,
+	}
+	attachResponse, err := cli.ContainerAttach(ctx, resp.ID, attachOptions)
+	if err != nil {
+		return fmt.Errorf("failed to attach to container: %v", err)
+	}
+	defer attachResponse.Close()
+
+	if err := cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{}); err != nil {
+		return fmt.Errorf("failed to start container: %v", err)
+	}
+
+	// Stream output to stdout
+	go func() {
+		_, err := io.Copy(os.Stdout, attachResponse.Reader)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error copying output: %v\n", err)
+		}
+	}()
+
+	// Wait for the container to finish and get its exit code
+	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, containertypes.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("error waiting for container: %v", err)
+		}
+	case status := <-statusCh:
+		if status.StatusCode != 0 {
+			return fmt.Errorf("container exited with non-zero status: %d", status.StatusCode)
+		}
+	}
+
+	return nil
+}
+
 func SpawnWithInput(
 	name string,
 	cmd []string,
