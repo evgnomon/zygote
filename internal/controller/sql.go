@@ -189,6 +189,83 @@ func (dc *SQLQueryController) QueryHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, results)
 }
 
+// ClusterStatusHandler handles requests for InnoDB cluster status
+func (dc *SQLQueryController) ClusterStatusHandler(c echo.Context) error {
+	// Ensure DB connection is valid
+	dc.mu.Lock()
+	if err := dc.db.Ping(); err != nil {
+		dc.mu.Unlock()
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Database connection failed: " + err.Error(),
+		})
+	}
+	dc.mu.Unlock()
+
+	// Query InnoDB cluster status
+	query := `
+        SELECT 
+            MEMBER_ID,
+            MEMBER_HOST,
+            MEMBER_PORT,
+            MEMBER_STATE,
+            MEMBER_ROLE,
+            MEMBER_VERSION
+        FROM 
+            performance_schema.replication_group_members
+    `
+
+	rows, err := dc.db.QueryContext(c.Request().Context(), query)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Failed to query cluster status: " + err.Error(),
+		})
+	}
+	defer rows.Close()
+
+	// Define structure for cluster member info
+	type ClusterMember struct {
+		MemberID      string `json:"member_id"`
+		MemberHost    string `json:"member_host"`
+		MemberPort    int    `json:"member_port"`
+		MemberState   string `json:"member_state"`
+		MemberRole    string `json:"member_role"`
+		MemberVersion string `json:"member_version"`
+	}
+
+	var members []ClusterMember
+
+	// Scan results
+	for rows.Next() {
+		var member ClusterMember
+		err := rows.Scan(
+			&member.MemberID,
+			&member.MemberHost,
+			&member.MemberPort,
+			&member.MemberState,
+			&member.MemberRole,
+			&member.MemberVersion,
+		)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "Failed to scan cluster status: " + err.Error(),
+			})
+		}
+		members = append(members, member)
+	}
+
+	// Check for errors during iteration
+	if err = rows.Err(); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"error": "Error reading cluster status: " + err.Error(),
+		})
+	}
+
+	// Return successful response
+	return c.JSON(http.StatusOK, map[string]any{
+		"members": members,
+	})
+}
+
 // AddEndpoint configures the controller routes
 func (dc *SQLQueryController) AddEndpoint(prefix string, e *echo.Echo) error {
 	// Cleanup on server shutdown
@@ -199,5 +276,6 @@ func (dc *SQLQueryController) AddEndpoint(prefix string, e *echo.Echo) error {
 		}
 	})
 	e.POST(fmt.Sprintf("%s/sql/query", prefix), dc.QueryHandler)
+	e.GET(fmt.Sprintf("%s/sql/cluster", prefix), dc.ClusterStatusHandler)
 	return nil
 }
