@@ -39,3 +39,12 @@
   tags:
     - z_core
     - never
+
+- name: Deploy CA
+  hosts: shards
+  gather_facts: false
+  roles:
+    - role: z_ca_deploy
+  tags:
+    - z_ca_deploy
+    - never
