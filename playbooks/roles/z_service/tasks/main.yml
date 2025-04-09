@@ -66,6 +66,24 @@
     recurse: true   # Recursively apply ownership to all contents
   become: true
 
+- name: Fix cert_dir permissions
+  file:
+    path: "/var/lib/zygote/certs/functions/{{ inventory_hostname }}"
+    state: directory
+    mode: 0700
+    owner: zygote
+    group: zygote
+  become: true
+
+- name: Fix function dir permissions
+  file:
+    path: "/var/lib/zygote/certs/functions"
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+  become: true
+
 - name: Reload systemd
   command: systemctl daemon-reload
   become: yes
