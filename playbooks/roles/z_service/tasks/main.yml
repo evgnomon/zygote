@@ -27,7 +27,7 @@
 - name: Deploy service file
   template:
     src: z_service.j2
-    dest: "/etc/systemd/system/{{ z_service_name }}.service"
+    dest: "{{ z_service_systemd_file }}"
     owner: root
     group: root
     mode: '0644'

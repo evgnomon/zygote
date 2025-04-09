@@ -6,7 +6,7 @@
     - "{{ workspace }}/dist/*"
   evgnomon.catamaran.pkg_release:
     github_token: "{{ z_user_token }}"
-    repo: evgnomon/zygote
+    repo: "{{ z_repo_slug }}"
     tag_name: "{{ z_tag }}"
     release_name: Release {{ z_tag }}
     release_description: Release {{ z_tag }}

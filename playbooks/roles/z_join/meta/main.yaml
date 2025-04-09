@@ -1,8 +1,7 @@
 ---
 dependencies:
+  - role: evgnomon.catamaran.z_facts
   - role: evgnomon.catamaran.z_defaults
-  - role: z_lib_var
-  - role: z_ca_deploy
   - role: z_install
     vars:
-      z_target: "{{ z_service_name }}"
+      z_target: z

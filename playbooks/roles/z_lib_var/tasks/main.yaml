@@ -1,7 +1,7 @@
 ---
 - name: Create zygote base directory
   file:
-    path: /var/lib/zygote
+    path: "{{ z_backup_dir }}"
     state: directory
     mode: "0755"
     owner: root
@@ -9,7 +9,7 @@
 
 - name: Create certs directory
   file:
-    path: /var/lib/zygote/certs
+    path: "{{ z_certs_dir }}"
     state: directory
     mode: "0755"
     owner: root
@@ -17,7 +17,7 @@
 
 - name: Create ca directory
   file:
-    path: /var/lib/zygote/certs/ca
+    path: "{{ z_ca_dir }}"
     state: directory
     mode: "0755"
     owner: root
@@ -25,7 +25,7 @@
 
 - name: Create functions directory
   file:
-    path: /var/lib/zygote/certs/functions
+    path: "{{ z_keychain_dir }}"
     state: directory
     mode: "0755" # Restrictive permissions for functions directory
     owner: root

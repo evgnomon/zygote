@@ -135,6 +135,7 @@ func CreateGroupReplicationContainer(numReplicas int, networkName string) {
 		r.AdminPasswrod = "password"
 		r.RootPasswrod = "root1234"
 		r.Tenant = "zygote"
+		r.DatabaseName = r.Tenant
 		r.Create(ctx)
 	}
 }
@@ -145,6 +146,7 @@ type Replica struct {
 	RootPasswrod  string
 	AdminPasswrod string
 	Tenant        string
+	DatabaseName  string
 }
 
 func (r *Replica) Create(ctx context.Context) {
@@ -156,9 +158,12 @@ func (r *Replica) Create(ctx context.Context) {
 		// "MYSQL_ROOT_PASSWORD=root1234",
 		fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", r.RootPasswrod),
 	}
-	dbName, err := utils.RepoFullName()
-	if err != nil {
-		panic(err)
+	dbName := r.DatabaseName
+	if dbName == "" {
+		dbName, err = utils.RepoFullName()
+		if err != nil {
+			panic(err)
+		}
 	}
 	config := &dcontainer.Config{
 		Image: mysqlImage,
@@ -441,6 +446,7 @@ func (c *SQLShard) CreateReplica(ctx context.Context, shardIndex, repIndex int) 
 	r.AdminPasswrod = c.Password
 	r.RootPasswrod = c.RootPassword
 	r.Tenant = c.Tenant
+	r.DatabaseName = c.DatabaseName
 	r.Create(ctx)
 	return nil
 }

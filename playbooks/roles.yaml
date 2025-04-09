@@ -1,7 +1,0 @@
-- hosts: localhost
-  gather_facts: no
-  roles:
-    - z_lib_var
-  tags:
-    - never
-    - z_lib_var

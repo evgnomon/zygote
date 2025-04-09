@@ -278,18 +278,6 @@ func joinCommand() *cli.Command {
 				Usage:   "Directory containing the SQL migration files.",
 			},
 			&cli.IntFlag{
-				Name:     "replica-index",
-				Aliases:  []string{"n"},
-				Required: true,
-				Usage:    "Replica ID, starting 0",
-			},
-			&cli.IntFlag{
-				Name:     "shard-index",
-				Aliases:  []string{"s"},
-				Required: true,
-				Usage:    "Shared index, starting 0",
-			},
-			&cli.IntFlag{
 				Name:  "num-shards",
 				Value: 1,
 				Usage: "number of shards",
@@ -305,6 +293,15 @@ func joinCommand() *cli.Command {
 				Usage:    "The domain name, e.g. foo.com or foo.bar.com",
 				Required: true,
 			},
+			&cli.StringFlag{
+				Name:     "host",
+				Usage:    "The host name, e.g. shard-a-1.foo.com or shard-b.foo.bar.com",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name:  "db",
+				Usage: "Name of the database",
+			},
 		},
 		Action: func(c *cli.Context) error {
 			_, err := util.Logger()
@@ -315,15 +312,21 @@ func joinCommand() *cli.Command {
 			var cl db.SQLShard
 			cl.Domain = c.String("domain")
 			cl.NetworkName = "host"
-			repIndex := c.Int("replica-index")
-			err = cl.Create(ctx, c.Int("shard-index"), repIndex)
+			cl.DatabaseName = c.String("db")
+
+			h, err := util.CalculateIndices(c.String("host"))
+			if err != nil {
+				return err
+			}
+
+			err = cl.Create(ctx, h.ShardIndex, h.RepIndex)
 			if err != nil {
 				return fmt.Errorf("failed to create shard: %w", err)
 			}
 			mc := mem.NewMemShard(cl.Domain)
 			mc.NumShards = c.Int("num-shards")
 			mc.ShardSize = c.Int("shard-size")
-			err = mc.CreateReplica(repIndex)
+			err = mc.CreateReplica(h.RepIndex)
 			if err != nil {
 				return fmt.Errorf("failed to create replica: %w", err)
 			}
@@ -332,7 +335,7 @@ func joinCommand() *cli.Command {
 			if err != nil {
 				return fmt.Errorf("failed to create logger: %w", err)
 			}
-			if repIndex == 0 && c.Int("shard-index") == 0 {
+			if h.RepIndex == 0 && c.Int("shard-index") == 0 {
 				for count < maxMemClusterCreateRetry {
 					err = mc.Init(ctx)
 					if err != nil {

@@ -1,0 +1,6 @@
+---
+- shell: |
+    z deinit -v
+    z join -d zygote.run --host {{ inventory_hostname }} --num-shards {{ z_num_shards }} --shard-size {{ z_shard_size }} --db {{ z_user }}
+  args:
+    chdir: /tmp
