@@ -3,15 +3,10 @@
   copy:
     src: '{{ lookup("env", "HOME") }}/.config/zygote/certs/ca/ca_cert.pem'
     dest: '{{ zygote_home }}/certs/ca/ca_cert.pem'
-    owner: zygote
-    group: zygote
-    mode: "0600"
+    owner: root
+    group: root
+    mode: "0644"
   become: true
-
-- name: Remove ca_key.pem
-  file:
-    path: '{{ zygote_home }}/certs/ca/ca_key.pem'
-    state: absent
 
 - name: Deploy function certificates
   copy:

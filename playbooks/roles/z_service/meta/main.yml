@@ -1,4 +1,5 @@
 ---
 dependencies:
   - role: evgnomon.catamaran.z_defaults
-  - role: z_ca
+  - role: z_lib_var
+  - role: z_ca_deploy

@@ -24,16 +24,6 @@
   command: setcap 'cap_net_bind_service=+ep' {{ z_service_binary_path }}
   become: true
 
-- name: Ensure working directory exists if specified
-  file:
-    path: "{{ z_service_working_dir }}"
-    state: directory
-    owner: "{{ z_service_user }}"
-    group: "{{ z_service_group }}"
-    mode: '0755'
-  when: z_service_working_dir != ""
-  become: yes
-
 - name: Deploy service file
   template:
     src: z_service.j2
@@ -43,7 +33,7 @@
     mode: '0644'
   become: yes
 
-- name: Ensure service is enabled and in desired state
+- name: Ensure {{ z_service_name }} is enabled and in desired state
   systemd:
     name: "{{ z_service_name }}"
     state: "{{ z_service_state }}"
@@ -66,29 +56,18 @@
     recurse: true   # Recursively apply ownership to all contents
   become: true
 
-- name: Fix cert_dir permissions
+- name: cert_dir permissions exclusive to service user
   file:
-    path: "/var/lib/zygote/certs/functions/{{ inventory_hostname }}"
+    path: "{{ z_service_cert_dir }}"
     state: directory
     mode: 0700
-    owner: zygote
-    group: zygote
-  become: true
-
-- name: Fix function dir permissions
-  file:
-    path: "/var/lib/zygote/certs/functions"
-    state: directory
-    mode: 0755
-    owner: root
-    group: root
   become: true
 
 - name: Reload systemd
   command: systemctl daemon-reload
   become: yes
 
-- name: Restart z_service
+- name: Restart {{ z_service_name }}
   systemd:
     name: "{{ z_service_name }}"
     state: restarted
