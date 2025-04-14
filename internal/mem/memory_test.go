@@ -9,12 +9,12 @@ import (
 func TestMemShard_createRedisClusterCommand(t *testing.T) {
 	tests := []struct {
 		name     string
-		memShard *MemShard
+		memShard *MemNode
 		want     []string
 	}{
 		{
 			name: "Single shard with one replica",
-			memShard: &MemShard{
+			memShard: &MemNode{
 				ShardSize: 2,
 				NumShards: 1,
 				Domain:    "example.com",
@@ -29,7 +29,7 @@ func TestMemShard_createRedisClusterCommand(t *testing.T) {
 		},
 		{
 			name: "two shard with single master",
-			memShard: &MemShard{
+			memShard: &MemNode{
 				ShardSize: 1,
 				NumShards: 2,
 				Domain:    "example.com",
@@ -44,7 +44,7 @@ func TestMemShard_createRedisClusterCommand(t *testing.T) {
 		},
 		{
 			name: "Two shards with one replica",
-			memShard: &MemShard{
+			memShard: &MemNode{
 				ShardSize: 2,
 				NumShards: 2,
 				Domain:    "test.com",
@@ -61,7 +61,7 @@ func TestMemShard_createRedisClusterCommand(t *testing.T) {
 		},
 		{
 			name: "Three shards with two replicas",
-			memShard: &MemShard{
+			memShard: &MemNode{
 				ShardSize: 3,
 				NumShards: 3,
 				Domain:    "cluster.local",

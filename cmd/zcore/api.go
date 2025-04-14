@@ -1,26 +1,28 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/evgnomon/zygote/internal/controller"
 	"github.com/evgnomon/zygote/internal/server"
+	"github.com/evgnomon/zygote/internal/util"
 )
 
+var logger = util.NewLogger()
+
 func main() {
+	logger.Info("Starting Zygote API server...")
 	s, err := server.NewServer()
 	if err != nil {
-		panic(fmt.Errorf("failed to create server: %v", err))
+		logger.Fatal("Failed to create server", util.WrapError(err))
 	}
 	dbC, err := controller.NewSQLQueryController()
 	if err != nil {
-		panic(fmt.Errorf("failed to create database controller: %v", err))
+		logger.Fatal("Failed to create database controller", util.WrapError(err))
 	}
 	hw := controller.NewHelloWorldController()
 
 	rc, err := controller.NewRedisQueryController(nil)
 	if err != nil {
-		panic(fmt.Errorf("failed to create redis controller: %v", err))
+		logger.Fatal("Failed to create redis controller", util.WrapError(err))
 	}
 	err = s.AddControllers([]controller.Controller{
 		dbC,
@@ -28,10 +30,10 @@ func main() {
 		rc,
 	})
 	if err != nil {
-		panic(fmt.Errorf("failed to add controllers: %v", err))
+		logger.Fatal("Failed to add controllers", util.WrapError(err))
 	}
 	err = s.Listen()
 	if err != nil {
-		panic(fmt.Errorf("failed to start server: %v", err))
+		logger.Fatal("Failed to start server", util.WrapError(err))
 	}
 }

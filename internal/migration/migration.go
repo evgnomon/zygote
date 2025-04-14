@@ -11,7 +11,6 @@ import (
 	"github.com/evgnomon/zygote/pkg/utils"
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/mysql"
-	"go.uber.org/zap"
 )
 
 type Migration struct {
@@ -19,10 +18,7 @@ type Migration struct {
 }
 
 func (m *Migration) Up(_ context.Context) error {
-	logger, err := util.Logger()
-	if err != nil {
-		return fmt.Errorf("failed to get logger: %w", err)
-	}
+	logger := util.NewLogger()
 	sqlDirExists, err := utils.PathExists(m.Directory)
 	if err != nil {
 		return fmt.Errorf("failed to check if directory exists: %w", err)
@@ -30,12 +26,12 @@ func (m *Migration) Up(_ context.Context) error {
 	if !sqlDirExists {
 		return nil
 	}
-	logger.Info("migrations up start")
+	logger.Info("migrations up start", nil)
 	db, err := connect(0)
 	if err != nil {
 		return err
 	}
-	m2, err := m.Migrate(logger, db)
+	m2, err := m.Migrate(db)
 	if err != nil {
 		return err
 	}
@@ -45,15 +41,12 @@ func (m *Migration) Up(_ context.Context) error {
 			return err
 		}
 	}
-	logger.Info("migrations up done")
+	logger.Info("migrations up done", nil)
 	return nil
 }
 
 func (m *Migration) Down(_ context.Context) error {
-	logger, err := util.Logger()
-	if err != nil {
-		return fmt.Errorf("failed to get logger: %w", err)
-	}
+	logger := util.NewLogger()
 	sqlDirExists, err := utils.PathExists(m.Directory)
 	if err != nil {
 		return fmt.Errorf("failed to check if directory exists: %w", err)
@@ -61,12 +54,12 @@ func (m *Migration) Down(_ context.Context) error {
 	if !sqlDirExists {
 		return nil
 	}
-	logger.Info("migrations down start")
+	logger.Info("migrations down start", nil)
 	db, err := connect(0)
 	if err != nil {
 		return err
 	}
-	m2, err := m.Migrate(logger, db)
+	m2, err := m.Migrate(db)
 	if err != nil {
 		return err
 	}
@@ -95,12 +88,12 @@ func (m *Migration) Down(_ context.Context) error {
 	if !empty {
 		return fmt.Errorf("database is not empty")
 	}
-	logger.Info("migrations down done")
+	logger.Info("migrations down done", nil)
 	return nil
 }
 
 // Migrate *sql.DB
-func (m *Migration) Migrate(_ *zap.Logger, db *sql.DB) (*migrate.Migrate, error) {
+func (m *Migration) Migrate(db *sql.DB) (*migrate.Migrate, error) {
 	driver, err := mysql.WithInstance(db, &mysql.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("dbMigrate WithInstance: %w", err)
