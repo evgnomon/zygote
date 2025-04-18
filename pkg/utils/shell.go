@@ -13,8 +13,11 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/evgnomon/zygote/internal/util"
 	toml "github.com/pelletier/go-toml/v2"
 )
+
+var logger = util.NewLogger()
 
 //go:embed scripts/vault_pass
 var vaultPassScript string
@@ -278,50 +281,33 @@ func DecryptFile(filename string) error {
 	return nil
 }
 
-func RepoFullName() (string, error) {
+func RepoFullName() string {
 	repoPath, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("error getting current directory: %v", err)
-	}
+	logger.FatalIfErr("Error getting current directory", err)
 	org := filepath.Base(filepath.Dir(repoPath))
 	repo := filepath.Base(repoPath)
-	if err != nil {
-		fmt.Println("Invalid pattern:", err)
-		return "", fmt.Errorf("error compiling pattern: %v", err)
-	}
-
 	formatted := fmt.Sprintf("%s_%s", org, repo)
-
 	if !pattern.MatchString(formatted) {
-		return "", fmt.Errorf("invalid repo name: %s", formatted)
+		logger.FatalIfErr("Error creating repo name", err)
 	}
-
-	return formatted, nil
+	return formatted
 }
 
-func RepoVaultPath() (string, error) {
-	vaultAddress, err := RepoFullName()
-	if err != nil {
-		return "", err
-	}
+func RepoVaultPath() string {
+	vaultAddress := RepoFullName()
 	secretFile := filepath.Join(UserHome(), ".blueprint", "secrets", fmt.Sprintf("%s.yaml", vaultAddress))
-	return secretFile, nil
+	return secretFile
 }
 
 func CreateRepoVault() error {
-	vaultAddress, err := RepoFullName()
-	if err != nil {
-		return err
-	}
+	vaultAddress := RepoFullName()
 	vaultFile := fmt.Sprintf("%s.vault", vaultAddress)
 	vaultFileExist, err := PathExists(filepath.Join(UserHome(), ".blueprint", "secrets", fmt.Sprintf("%s.asc", vaultFile)))
 	if err != nil {
 		return err
 	}
 	s, err := randomString(randLen)
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Error generating random string", err)
 	if vaultFileExist {
 		return nil
 	}

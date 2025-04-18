@@ -8,6 +8,7 @@ import (
 
 	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/internal/util"
+	"github.com/evgnomon/zygote/pkg/utils"
 )
 
 const defaultShardSize = 3
@@ -35,11 +36,11 @@ func NewMemNode() *MemNode {
 	return &m
 }
 
-func (m *MemNode) CreateReplica(ctx context.Context) error {
+func (m *MemNode) CreateReplica(ctx context.Context) {
 	config := container.ContainerConfig{
-		Name:        container.MapContainerName("mem", m.Tenant, m.ReplicaIndex, m.ShardIndex),
+		Name:        utils.NodeContainer("mem", m.Tenant, m.ReplicaIndex, m.ShardIndex),
 		NetworkName: m.NetworkName,
-		MysqlImage:  redisImage, // Assuming redisImage is the image used
+		Image:       redisImage, // Assuming redisImage is the image used
 		HealthCommand: []string{
 			"CMD",
 			"redis-cli",
@@ -51,7 +52,7 @@ func (m *MemNode) CreateReplica(ctx context.Context) error {
 			"ping",
 		},
 		Bindings: []string{
-			fmt.Sprintf("%s-data:/var/lib/redis", container.MapContainerName("mem", m.Tenant, m.ReplicaIndex, m.ShardIndex)),
+			fmt.Sprintf("%s-data:/var/lib/redis", utils.NodeContainer("mem", m.Tenant, m.ReplicaIndex, m.ShardIndex)),
 		},
 		Caps:    []string{},
 		EnvVars: []string{},
@@ -70,7 +71,11 @@ func (m *MemNode) CreateReplica(ctx context.Context) error {
 			defaultRedisPort + m.ReplicaIndex*10 + m.ShardIndex*100: defaultRedisPort,
 		},
 	}
-	return config.Make(ctx)
+	err := config.StartContainer(ctx)
+	if err != nil {
+		logger.Fatal("Failed to start Redis container", util.M{"error": err})
+		return
+	}
 }
 
 func (m *MemNode) createRedisClusterCommand() []string {
@@ -80,12 +85,12 @@ func (m *MemNode) createRedisClusterCommand() []string {
 	for repIndex := 0; repIndex < m.ShardSize; repIndex++ {
 		for shardIndex := 0; shardIndex < m.NumShards; shardIndex++ {
 			// Convert shard number to letter (a=0, b=1, c=2, etc.)
-			shardLetter := string('a' + rune(repIndex/m.NumShards))
+			shardLetter := string('a' + rune(repIndex))
 			var host string
-			if repIndex%m.NumShards == 0 {
+			if shardIndex%m.NumShards == 0 {
 				var host string
 				if m.NetworkName != hostNetworkName {
-					host = fmt.Sprintf("%s:%d", container.MapContainerName("mem", m.Tenant, repIndex, shardIndex), defaultRedisPort)
+					host = fmt.Sprintf("%s:%d", utils.NodeContainer("mem", m.Tenant, repIndex, shardIndex), defaultRedisPort)
 				} else {
 					host = fmt.Sprintf("shard-%s.%s:%d", shardLetter, m.Domain, defaultRedisPort)
 				}
@@ -93,9 +98,9 @@ func (m *MemNode) createRedisClusterCommand() []string {
 				continue
 			}
 			if m.NetworkName != hostNetworkName {
-				host = fmt.Sprintf("%s:%d", container.MapContainerName("mem", m.Tenant, repIndex, shardIndex), defaultRedisPort)
+				host = fmt.Sprintf("%s:%d", utils.NodeContainer("mem", m.Tenant, repIndex, shardIndex), defaultRedisPort)
 			} else {
-				host = fmt.Sprintf("shard-%s-%d.%s:%d", shardLetter, repIndex%m.NumShards, m.Domain, defaultRedisPort)
+				host = fmt.Sprintf("shard-%s-%d.%s:%d", shardLetter, shardIndex%m.NumShards, m.Domain, defaultRedisPort)
 			}
 			cmd = append(cmd, host)
 		}
@@ -112,7 +117,7 @@ func (m *MemNode) Init(ctx context.Context) error {
 	}
 	client, err := container.CreateClinet()
 	if err != nil {
-		return fmt.Errorf("failed to create docker client: %w", err)
+		return fmt.Errorf("failed to create client: %w", err)
 	}
 	logger.Debug("Redis command", util.M{"command": strings.Join(m.createRedisClusterCommand(), " ")})
 	return container.SpawnAndWait(ctx, client, redisImage, m.Tenant, m.createRedisClusterCommand(), portMap, m.NetworkName)

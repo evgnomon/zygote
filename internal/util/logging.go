@@ -17,7 +17,7 @@ func NewLogger() Logger {
 	logLevelEnv := strings.ToLower(os.Getenv("Z_LOG_LEVEL"))
 
 	// Default log level
-	var level zerolog.Level = zerolog.InfoLevel
+	var level = zerolog.InfoLevel
 
 	// Map environment variable to zerolog level
 	switch logLevelEnv {
@@ -56,8 +56,9 @@ type Logger interface {
 	Debug(msg string, args ...M)
 	Info(msg string, args ...M)
 	Warning(msg string, args ...M)
-	Error(msg string, args ...M)
+	Error(msg string, err error, args ...M)
 	Fatal(msg string, args ...M)
+	FatalIfErr(msg string, err error, args ...M)
 }
 
 // zerologLogger wraps a Zerolog logger to implement the Logger interface.
@@ -131,68 +132,78 @@ func (z *zerologLogger) addFields(event *zerolog.Event, args M) *zerolog.Event {
 
 // Debug logs a message at Debug level with an optional Args map.
 func (z *zerologLogger) Debug(msg string, args ...M) {
+	event := z.logger.Debug()
 	for _, arg := range args {
 		if arg == nil {
 			continue
 		}
-		event := z.logger.Debug()
 		event = z.addFields(event, arg)
-		event.Msg(msg)
 	}
+	event.Msg(msg)
 }
 
 // Info logs a message at Info level with an optional Args map.
 func (z *zerologLogger) Info(msg string, args ...M) {
+	event := z.logger.Info()
 	for _, arg := range args {
 		if arg == nil {
 			continue
 		}
-		event := z.logger.Info()
 		event = z.addFields(event, arg)
-		event.Msg(msg)
 	}
+	event.Msg(msg)
 }
 
 // Warning logs a message at Warn level with an optional Args map.
 func (z *zerologLogger) Warning(msg string, args ...M) {
+	event := z.logger.Warn()
 	for _, arg := range args {
 		if arg == nil {
 			continue
 		}
-		event := z.logger.Warn()
 		event = z.addFields(event, arg)
-		event.Msg(msg)
 	}
+	event.Msg(msg)
 }
 
 // Error logs a message at Error level with an optional Args map.
-func (z *zerologLogger) Error(msg string, args ...M) {
+func (z *zerologLogger) Error(msg string, err error, args ...M) {
+	event := z.logger.Error()
+	event = event.Err(err)
 	for _, arg := range args {
 		if arg == nil {
 			continue
 		}
-		event := z.logger.Error()
 		event = z.addFields(event, arg)
-		event.Msg(msg)
 	}
+	event.Msg(msg)
 }
 
 // Fatal logs a message at Fatal level with an optional Args map and exits.
 func (z *zerologLogger) Fatal(msg string, args ...M) {
+	event := z.logger.Fatal()
 	for _, arg := range args {
 		if arg == nil {
 			continue
 		}
-		event := z.logger.Fatal()
 		event = z.addFields(event, arg)
-		event.Msg(msg)
 	}
+	event.Msg(msg)
 }
 
-// Example function that returns an error with stack trace
-func doSomething() error {
-	// Simulate a deeper call stack
-	return errors.Wrap(fmt.Errorf("database failure"), "failed to query")
+func (z *zerologLogger) FatalIfErr(msg string, err error, args ...M) {
+	if err != nil {
+		event := z.logger.Fatal()
+		event = event.Err(err)
+		for _, arg := range args {
+			if arg == nil {
+				continue
+			}
+			event = z.addFields(event, arg)
+		}
+		event.Msg(msg)
+	}
+	z.Debug(msg, args...)
 }
 
 func WrapError(err error) M {

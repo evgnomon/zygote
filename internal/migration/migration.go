@@ -145,10 +145,7 @@ func connect(shard int) (*sql.DB, error) {
 			return nil, fmt.Errorf("dbMigrate strconv.Atoi: %w", err)
 		}
 	}
-	dbName, err := utils.RepoFullName()
-	if err != nil {
-		return nil, fmt.Errorf("dbMigrate RepoFullName: %w", err)
-	}
+	dbName := utils.RepoFullName()
 	db, err := sql.Open(
 		"mysql",
 		fmt.Sprintf("admin:password@tcp(%[2]s:%[1]d)/%[3]s?multiStatements=true",

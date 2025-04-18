@@ -96,13 +96,7 @@ func (s *Server) tlsConfig() (*tls.Config, error) {
 
 			// Start the server
 			err := server.ListenAndServe()
-			if err != nil {
-				// Handle error
-				panic(err)
-			}
-			if err != nil {
-				logger.Error("Failed to start HTTP server for ACME challenges", util.WrapError(err))
-			}
+			logger.FatalIfErr("Failed to start HTTP server for ACME challenges", err)
 		}()
 	} else {
 		// Use local certificates

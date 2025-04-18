@@ -7,9 +7,7 @@ func InitRedisCluster() {
 		"6373": "6373",
 	}
 	client, err := CreateClinet()
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Failed to create client", err)
 	ctx := context.Background()
 	Spawn(ctx, client, "redis:7.0.11", []string{
 		"redis-cli", "--cluster", "create",

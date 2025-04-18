@@ -37,7 +37,6 @@ import (
 	"github.com/evgnomon/zygote/pkg/utils"
 )
 
-const containerStartTimeout = 20 * time.Second
 const httpClientTimeout = 10 * time.Second
 const redisRetryInterval = 10 * time.Second
 const editor = "vi"
@@ -47,7 +46,6 @@ const routerReadWritePort = 6446
 const routerReadOnlyPort = 7447
 const defaultShardSize = 3
 const defaultNumShards = 3
-const mysqlRouterConfTmplName = "router.conf"
 const maxMemClusterCreateRetry = 5
 
 var logger = util.NewLogger()
@@ -147,7 +145,7 @@ func buildCommand() *cli.Command {
 
 			os.Setenv("ANSIBLE_VAULT_PASSWORD_FILE", filepath.Join(utils.UserHome(), ".config", "zygote", "scripts", "vault_pass"))
 
-			vaultPath, err := utils.RepoVaultPath()
+			vaultPath := utils.RepoVaultPath()
 			if err != nil {
 				return err
 			}
@@ -257,10 +255,7 @@ func initCommand() *cli.Command {
 
 			for shardIndex := 0; shardIndex < defaultNumShards; shardIndex++ {
 				for repIndex := 0; repIndex < defaultShardSize; repIndex++ {
-					sn, err := db.NewSQLNode()
-					if err != nil {
-						return fmt.Errorf("failed to create SQL node: %w", err)
-					}
+					sn := db.NewSQLNode()
 					sn.Domain = "my.zygote.run"
 					sn.DatabaseName = "zygote"
 					sn.Tenant = "zygote"
@@ -273,14 +268,8 @@ func initCommand() *cli.Command {
 					wg.Add(1)
 					go func(sn *db.SQLNode) {
 						defer wg.Done()
-						err = createNode(ctx, sn)
-						if err != nil {
-							logger.Fatal("failed to create shard", util.WrapError(err))
-						}
+						createNode(ctx, sn)
 					}(sn)
-					if err != nil {
-						return fmt.Errorf("failed to create shard: %w", err)
-					}
 				}
 			}
 			wg.Wait()
@@ -289,45 +278,39 @@ func initCommand() *cli.Command {
 	}
 }
 
-func createNode(ctx context.Context, sn *db.SQLNode) error {
+func createNode(ctx context.Context, sn *db.SQLNode) {
 	n := container.NewNetworkConfig(sn.NetworkName)
-	err := n.Ensure(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create network: %w", err)
-	}
-	// err := cl.Make(ctx)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to create shard: %w", err)
-	// }
+	n.Ensure(ctx)
+	err := sn.StartSQLContainers(ctx)
+	logger.FatalIfErr("Make SQL node", err)
 	mc := mem.NewMemNode()
 	mc.Domain = sn.Domain
 	mc.Tenant = sn.Tenant
 	mc.ShardIndex = sn.ShardIndex
 	mc.ReplicaIndex = sn.RepIndex
 	mc.NetworkName = sn.NetworkName
-	if mc.NetworkName != container.HostNetworkName{
+	if mc.NetworkName != container.HostNetworkName {
 		mc.NetworkName = container.AppNetworkName()
 	}
 	mc.ShardSize = sn.ShardSize
 	mc.NumShards = sn.NumShards
-	err = mc.CreateReplica(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to create replica: %w", err)
-	}
+	mc.CreateReplica(ctx)
+
 	count := 0
 	if mc.ReplicaIndex == 0 && mc.ShardIndex == 0 {
+		var err error
 		for count < maxMemClusterCreateRetry {
 			err = mc.Init(ctx)
 			if err != nil {
-				logger.Warning("failed to init replica", util.WrapError(err))
+				logger.FatalIfErr("Init replica", err)
 				time.Sleep(redisRetryInterval)
 				count++
 				continue
 			}
 			break
 		}
+		logger.FatalIfErr("Init replica", err)
 	}
-	return nil
 }
 
 func joinCommand() *cli.Command {
@@ -382,7 +365,8 @@ func joinCommand() *cli.Command {
 			sn.NumShards = c.Int("num-shards")
 			sn.ShardSize = c.Int("shard-size")
 
-			return createNode(ctx, &sn)
+			createNode(ctx, &sn)
+			return nil
 		},
 	}
 }
@@ -837,11 +821,8 @@ func generateDBCommand() *cli.Command {
 		Action: func(c *cli.Context) error {
 			dbName := c.String("name")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 			m, err := db.CreateDatabase(dbName)
 			if err != nil {
@@ -880,11 +861,8 @@ func generateTableCommand() *cli.Command {
 			}
 			dbName := c.String("db")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 
 			m, err := db.CreateTable(dbName, tableName)
@@ -941,11 +919,8 @@ func generateColCommand() *cli.Command {
 
 			dbName := c.String("db")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 
 			colType := c.String("type")
@@ -1022,11 +997,8 @@ func generatePropCommand() *cli.Command {
 
 			dbName := c.String("db")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 
 			m, err := db.CreateProperty(dbName, tableName, colName, fieldPath,
@@ -1093,11 +1065,8 @@ func generateIndexCommand() *cli.Command {
 
 			dbName := c.String("db")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 
 			if c.Bool("unique") && c.Bool("full-text") {
@@ -1179,16 +1148,12 @@ func smokerCommand() *cli.Command {
 			defer func() {
 				// Change back to original directory
 				err = os.Chdir(os.Getenv("PWD"))
-				if err != nil {
-					panic(fmt.Errorf("failed to change back to original directory: %w", err))
-				}
+				logger.FatalIfErr("Change back to original directory", err)
 			}()
 
 			defer func() {
 				err = utils.Script([][]string{{"sudo", zygotePath, "deinit", "-v"}})
-				if err != nil {
-					panic(fmt.Errorf("failed to run smoke tests: %w", err))
-				}
+				logger.FatalIfErr("Deinit zygote", err)
 			}()
 			err = utils.Script([][]string{
 				{"rm", "-rf", "./sqls"},
@@ -1233,10 +1198,7 @@ func smokerCommand() *cli.Command {
 func main() {
 	os.Setenv("EDITOR", editor)
 	err := utils.WriteScripts()
-	if err != nil {
-		panic(err)
-	}
-
+	logger.FatalIfErr("Write scripts", err)
 	logger := util.NewLogger()
 
 	app := &cli.App{
@@ -1266,7 +1228,7 @@ func main() {
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
-		logger.Error("error running command", util.M{"error": err})
+		logger.Error("error running command", err)
 	}
 }
 

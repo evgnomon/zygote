@@ -28,13 +28,13 @@ const sqlsDir = "sqls"
 const mysqlPublicDefaultPort = 3306
 const groupRepDefaultPort = 33061
 const defaultShardSize = 3
-const containerStartTimeout = 20 * time.Second
 const hostNetworkName = "host"
 const defaultConnDatabaseName = "mysql"
 const localhostIP = "127.0.0.1"
 const dbShortName = "sql"
 const dbRouterShortName = "sql-router"
-const replicationRetrySkeepTime = 5 * time.Second
+const replicationRetrySleepTime = 5 * time.Second
+const numRetriesJoinGroupReplication = 5
 
 var logger = util.NewLogger()
 
@@ -54,16 +54,13 @@ type SQLNode struct {
 	RepIndex     int
 }
 
-func NewSQLNode() (*SQLNode, error) {
+func NewSQLNode() *SQLNode {
 	c := &SQLNode{}
 	if c.ShardSize == 0 {
 		c.ShardSize = defaultShardSize
 	}
 	if c.DatabaseName == "" {
-		dbName, err := utils.RepoFullName()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get repo full name: %w", err)
-		}
+		dbName := utils.RepoFullName()
 		c.DatabaseName = dbName
 	}
 	if c.NumShards == 0 {
@@ -90,34 +87,23 @@ func NewSQLNode() (*SQLNode, error) {
 	if c.Domain == "" {
 		c.Domain = "zygote.run"
 	}
-	return c, nil
+	return c
 }
 
-func mapPort(base int, repIndex, shardIndex int) int {
-	return base + repIndex*10 + 100*shardIndex
+func (s *SQLNode) mapPort(target int) int {
+	return utils.NodePort(s.NetworkName, target, s.RepIndex, s.ShardIndex)
 }
 
-func (r *SQLNode) mapPort(base int) int {
-	if r.NetworkName == hostNetworkName {
-		return base
-	}
-	return mapPort(base, r.RepIndex, r.ShardIndex)
-}
-
-func (c *SQLNode) MakeDB(ctx context.Context) error {
-	dbName := c.DatabaseName
-	var err error
+func (s *SQLNode) MakeDB(ctx context.Context) error {
+	dbName := s.DatabaseName
 	if dbName == "" {
-		dbName, err = utils.RepoFullName()
-		if err != nil {
-			return fmt.Errorf("failed to get repo full name: %w", err)
-		}
+		dbName = utils.RepoFullName()
 	}
-	containerName := c.DBContainerName()
+	containerName := s.DBContainerName()
 	containerConfig := &container.ContainerConfig{
 		Name:        containerName,
-		NetworkName: c.NetworkName,
-		MysqlImage:  mysqlImage,
+		NetworkName: s.NetworkName,
+		Image:       mysqlImage,
 		HealthCommand: []string{
 			"CMD",
 			"mysql",
@@ -125,7 +111,7 @@ func (c *SQLNode) MakeDB(ctx context.Context) error {
 			"localhost",
 			"-u",
 			"root",
-			fmt.Sprintf("-p%s", c.RootPassword),
+			fmt.Sprintf("-p%s", s.RootPassword),
 			"-e",
 			"SHOW tables;",
 			dbName,
@@ -137,91 +123,89 @@ func (c *SQLNode) MakeDB(ctx context.Context) error {
 		},
 		Caps: []string{"SYS_NICE"},
 		EnvVars: []string{
-			fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", c.RootPassword),
+			fmt.Sprintf("MYSQL_ROOT_PASSWORD=%s", s.RootPassword),
 		},
 		Ports: map[int]int{
-			c.mapPort(mysqlPublicDefaultPort): mysqlPublicDefaultPort,
-			c.mapPort(groupRepDefaultPort):    groupRepDefaultPort,
+			s.mapPort(mysqlPublicDefaultPort): mysqlPublicDefaultPort,
+			s.mapPort(groupRepDefaultPort):    groupRepDefaultPort,
 		},
 	}
-	return containerConfig.Make(ctx)
+	return containerConfig.StartContainer(ctx)
 }
 
-func (c *SQLNode) Endpoints() []string {
-	if c.ShardSize == 0 {
+func (s *SQLNode) generateAddresses(port int) []string {
+	if s.ShardSize == 0 {
 		return nil
 	}
-	addrs := make([]string, c.ShardSize)
-	if c.NetworkName != hostNetworkName {
-		for repIndex := 0; repIndex < c.ShardSize; repIndex++ {
-			addrs[repIndex] = fmt.Sprintf("%s:%d", container.MapContainerName(dbShortName, c.Tenant, repIndex, c.ShardIndex), mysqlPublicDefaultPort)
+
+	addrs := make([]string, s.ShardSize)
+	if s.NetworkName != hostNetworkName {
+		for repIndex := 0; repIndex < s.ShardSize; repIndex++ {
+			addrs[repIndex] = fmt.Sprintf("%s:%d",
+				utils.NodeContainer(dbShortName, s.Tenant, repIndex, s.ShardIndex),
+				port)
 		}
 		return addrs
 	}
-	for repIndex := 0; repIndex < c.ShardSize; repIndex++ {
-		addrs[repIndex] = fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(repIndex)), c.Domain, mysqlPublicDefaultPort)
-		if c.ShardIndex > 0 {
-			addrs[repIndex] = fmt.Sprintf("shard-%s-%d.%s:%d", string('a'+rune(repIndex)), c.ShardIndex, c.Domain, mysqlPublicDefaultPort)
+
+	for repIndex := 0; repIndex < s.ShardSize; repIndex++ {
+		shardName := string('a' + rune(repIndex))
+		if s.ShardIndex > 0 {
+			addrs[repIndex] = fmt.Sprintf("shard-%s-%d.%s:%d",
+				shardName, s.ShardIndex, s.Domain, port)
+		} else {
+			addrs[repIndex] = fmt.Sprintf("shard-%s.%s:%d",
+				shardName, s.Domain, port)
 		}
 	}
 	return addrs
 }
 
-func (c *SQLNode) GroupReplicationAddresses() []string {
-	if c.ShardSize == 0 {
-		return nil
-	}
-	addrs := make([]string, c.ShardSize)
-	if c.NetworkName != hostNetworkName {
-		for repIndex := 0; repIndex < c.ShardSize; repIndex++ {
-			addrs[repIndex] = fmt.Sprintf("%s:%d", container.MapContainerName(dbShortName, c.Tenant, repIndex, c.ShardIndex), groupRepDefaultPort)
-		}
-		return addrs
-	}
-	for repIndex := 0; repIndex < c.ShardSize; repIndex++ {
-		addrs[repIndex] = fmt.Sprintf("shard-%s.%s:%d", string('a'+rune(repIndex)), c.Domain, groupRepDefaultPort)
-		if c.ShardIndex > 0 {
-			addrs[repIndex] = fmt.Sprintf("shard-%s-%d.%s:%d", string('a'+rune(repIndex)), c.ShardIndex, c.Domain, groupRepDefaultPort)
-		}
-	}
-	return addrs
+func (s *SQLNode) Endpoints() []string {
+	return s.generateAddresses(mysqlPublicDefaultPort)
 }
 
-func (c *SQLNode) GroupReplicationHosts(shardIndex int) []string {
-	if c.ShardSize == 0 {
+func (s *SQLNode) GroupReplicationAddresses() []string {
+	return s.generateAddresses(groupRepDefaultPort)
+}
+
+func (s *SQLNode) GroupReplicationHosts(shardIndex int) []string {
+	if s.ShardSize == 0 {
 		return nil
 	}
-	addrs := make([]string, c.ShardSize)
-	if c.NetworkName != hostNetworkName {
-		for repIndex := 0; repIndex < c.ShardSize; repIndex++ {
-			addrs[repIndex] = container.MapContainerName(dbShortName, c.Tenant, repIndex, c.ShardIndex)
+	addrs := make([]string, s.ShardSize)
+	if s.NetworkName != hostNetworkName {
+		for repIndex := 0; repIndex < s.ShardSize; repIndex++ {
+			addrs[repIndex] = utils.NodeContainer(dbShortName, s.Tenant, repIndex, s.ShardIndex)
 		}
 		return addrs
 	}
-	for repIndex := 0; repIndex < c.ShardSize; repIndex++ {
-		addrs[repIndex] = fmt.Sprintf("shard-%s.%s", string('a'+rune(repIndex)), c.Domain)
+	for repIndex := 0; repIndex < s.ShardSize; repIndex++ {
+		addrs[repIndex] = fmt.Sprintf("shard-%s.%s", string('a'+rune(repIndex)), s.Domain)
 		if shardIndex > 0 {
-			addrs[repIndex] = fmt.Sprintf("shard-%s-%d.%s", string('a'+rune(repIndex)), shardIndex, c.Domain)
+			addrs[repIndex] = fmt.Sprintf("shard-%s-%d.%s", string('a'+rune(repIndex)), shardIndex, s.Domain)
 		}
 	}
 	return addrs
 }
 
-func (c *SQLNode) Make(ctx context.Context) error {
-	logger.Info("Creating SQL node...")
-	
-	err := c.MakeSQLReplica(ctx)
+func (s *SQLNode) StartSQLContainers(ctx context.Context) error {
+	logger.Debug("Start SQL node containers", util.M{"sqlNode": s})
+	err := s.MakeSQLReplica(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create SQL replica: %w", err)
 	}
+	err = s.MakeSQLRouter(ctx)
+	logger.FatalIfErr("failed to create SQL router", err)
 
-	retries := 5
+	logger.Debug("SQL node containers started", util.M{"sqlNode": s})
+	retries := numRetriesJoinGroupReplication
 	for retries > 0 {
 		retries--
-		err = c.JoinGroupReplication()
+		err = s.JoinGroupReplication()
 		if err != nil {
-			logger.Info("Waiting for group replication to be ready...")
-			time.Sleep(replicationRetrySkeepTime)
+			logger.Debug("Waiting for group replication to be ready...")
+			time.Sleep(replicationRetrySleepTime)
 			continue
 		}
 		break
@@ -229,110 +213,109 @@ func (c *SQLNode) Make(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to join group replication: %w", err)
 	}
-
-	return c.MakeSQLRouter(ctx)
+	return nil
 }
 
-func (c *SQLNode) ContainerName(name string) string {
-	return container.MapContainerName(name, c.Tenant, c.RepIndex, c.ShardIndex)
+func (s *SQLNode) ContainerName(name string) string {
+	return utils.NodeContainer(name, s.Tenant, s.RepIndex, s.ShardIndex)
 }
 
-func (c *SQLNode) MakeSQLRouter(ctx context.Context) error {
+func (s *SQLNode) MakeSQLRouter(ctx context.Context) error {
 	const mysqlRouterConfTmplName = "router.conf"
 	routerConfParams := container.RouterConfParams{
-		Destinations: strings.Join(c.Endpoints(), ","),
+		Destinations: strings.Join(s.Endpoints(), ","),
 	}
 	routerConf, err := container.ApplyTemplate(mysqlRouterConfTmplName, routerConfParams)
 	if err != nil {
 		return err
 	}
-	containerName := c.ContainerName(dbRouterShortName)
-	container.Vol(c.Tenant, routerConf, fmt.Sprintf("%s-conf", containerName),
+	containerName := s.ContainerName(dbRouterShortName)
+	container.Vol(s.Tenant, routerConf, fmt.Sprintf("%s-conf", containerName),
 		"/etc/mysqlrouter/", "router.conf", container.AppNetworkName())
 	config := &container.ContainerConfig{
-		Name:          c.ContainerName(dbRouterShortName),
-		NetworkName:   c.NetworkName,
-		MysqlImage:    mysqlImage,
+		Name:          s.ContainerName(dbRouterShortName),
+		NetworkName:   s.NetworkName,
+		Image:         mysqlImage,
 		HealthCommand: []string{"CMD", "true"},
 		Bindings: []string{
 			fmt.Sprintf("%s:/etc/mysqlrouter/", fmt.Sprintf("%s-conf", containerName)),
 		},
 		Caps: []string{"SYS_NICE"},
 		EnvVars: []string{
-			fmt.Sprintf("MYSQL_PWD=%s", c.Password),
+			fmt.Sprintf("MYSQL_PWD=%s", s.Password),
 		},
 		Cmd: []string{
 			"mysqlrouter",
 			"--config=/etc/mysqlrouter/router.conf",
 		},
 		Ports: map[int]int{
-			c.mapPort(routerPortNumRead):  routerPortNumRead,
-			c.mapPort(routerPortNumWrite): routerPortNumWrite,
+			s.mapPort(routerPortNumRead):  routerPortNumRead,
+			s.mapPort(routerPortNumWrite): routerPortNumWrite,
 		},
 	}
-	err = config.Make(ctx)
+	err = config.StartContainer(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create router container: %w", err)
 	}
 	return nil
 }
 
-func (c *SQLNode) reportSQLInstanceAddress() string {
-	if c.NetworkName != hostNetworkName {
-		return c.ContainerName(dbShortName)
+func (s *SQLNode) reportSQLInstanceAddress() string {
+	if s.NetworkName != hostNetworkName {
+		return s.ContainerName(dbShortName)
 	}
-	if c.ShardIndex == 0 {
-		return fmt.Sprintf("shard-%s.%s", string('a'+rune(c.RepIndex)), c.Domain)
+	if s.ShardIndex == 0 {
+		return fmt.Sprintf("shard-%s.%s", string('a'+rune(s.RepIndex)), s.Domain)
 	}
-	return fmt.Sprintf("shard-%s-%d.%s", string('a'+rune(c.RepIndex)), c.ShardIndex, c.Domain)
+	return fmt.Sprintf("shard-%s-%d.%s", string('a'+rune(s.RepIndex)), s.ShardIndex, s.Domain)
 }
 
-func (c *SQLNode) MakeGroupReplicationConfigVolume() error {
+func (s *SQLNode) MakeGroupReplicationConfigVolume() error {
 	const clusterTmplName = "innodb_cluster_template.cnf"
 	sqlParams := container.InnoDBClusterParams{
-		ServerID:             c.RepIndex + 1,
+		ServerID:             s.RepIndex + 1,
 		GroupReplicationPort: groupRepDefaultPort,
-		ServerCount:          c.ShardSize,
-		ServersList:          strings.Join(c.GroupReplicationAddresses(), ","),
-		ReportAddress:        c.reportSQLInstanceAddress(),
+		ServerCount:          s.ShardSize,
+		ServersList:          strings.Join(s.GroupReplicationAddresses(), ","),
+		ReportAddress:        s.reportSQLInstanceAddress(),
 		ReportPort:           mysqlPublicDefaultPort,
 	}
 	innodbGroupReplication, err := container.ApplyTemplate(clusterTmplName, sqlParams)
 	if err != nil {
 		return err
 	}
-	container.Vol(c.Tenant, innodbGroupReplication, fmt.Sprintf("%s-conf-gr", c.ContainerName(dbShortName)),
+	container.Vol(s.Tenant, innodbGroupReplication, fmt.Sprintf("%s-conf-gr", s.ContainerName(dbShortName)),
 		"/etc/mysql/conf.d/", "gr.cnf", container.AppNetworkName())
 	return err
 }
 
-func (c *SQLNode) MakeSQLConfBVolume() error {
+func (s *SQLNode) MakeSQLConfBVolume() error {
 	const basicInitSQLTmplName = "sql_init_template.sql"
 	basicInitParams := container.SQLInitParams{
-		DBName:   c.DatabaseName,
-		Username: c.User,
-		Password: c.Password,
+		DBName:   s.DatabaseName,
+		Username: s.User,
+		Password: s.Password,
 	}
 	sqlStatements, err := container.ApplyTemplate(basicInitSQLTmplName, basicInitParams)
 	if err != nil {
 		return err
 	}
-	containerName := c.ContainerName("sql")
-	container.Vol(c.Tenant, sqlStatements, fmt.Sprintf("%s-conf", containerName),
+	containerName := s.ContainerName("sql")
+	container.Vol(s.Tenant, sqlStatements, fmt.Sprintf("%s-conf", containerName),
 		"/docker-entrypoint-initdb.d", "init.sql", container.AppNetworkName())
 	return nil
 }
 
-func (c *SQLNode) MakeSQLReplica(ctx context.Context) error {
-	err := c.MakeSQLConfBVolume()
+func (s *SQLNode) MakeSQLReplica(ctx context.Context) error {
+	err := s.MakeSQLConfBVolume()
 	if err != nil {
 		return fmt.Errorf("failed to create SQL config volume: %w", err)
 	}
-	err = c.MakeGroupReplicationConfigVolume()
+	err = s.MakeGroupReplicationConfigVolume()
 	if err != nil {
 		return fmt.Errorf("failed to create group replication config volume: %w", err)
 	}
-	return c.MakeDB(ctx)
+	return s.MakeDB(ctx)
 }
 
 type SQLMigration struct {
@@ -627,23 +610,24 @@ type CreateIndexParams struct {
 	FullText bool
 }
 
-func (c *SQLNode) DBContainerName() string {
-	return c.ContainerName(dbShortName)
+func (s *SQLNode) DBContainerName() string {
+	return s.ContainerName(dbShortName)
 }
 
-func (c *SQLNode) SQLRouterContainerName() string {
-	return c.ContainerName(dbRouterShortName)
+func (s *SQLNode) SQLRouterContainerName() string {
+	return s.ContainerName(dbRouterShortName)
 }
 
-func (c *SQLNode) connectionString(dbName string) string {
-	if c.NetworkName != hostNetworkName {
-		return fmt.Sprintf("root:%s@tcp(%s:%d)/%s", c.RootPassword, localhostIP, c.mapPort(mysqlPublicDefaultPort), dbName)
+func (s *SQLNode) connectionString(dbName string) string {
+	if s.NetworkName != hostNetworkName {
+		return fmt.Sprintf("root:%s@tcp(%s:%d)/%s", s.RootPassword, localhostIP, s.mapPort(mysqlPublicDefaultPort), dbName)
 	}
-	return fmt.Sprintf("root:%s@tcp(%s:%d)/%s", c.RootPassword, localhostIP, mysqlPublicDefaultPort, dbName)
+	return fmt.Sprintf("root:%s@tcp(%s:%d)/%s", s.RootPassword, localhostIP, mysqlPublicDefaultPort, dbName)
 }
 
-func (c *SQLNode) JoinGroupReplication() error {
-	// Database connection parameters (adjust as needed)
+func (s *SQLNode) JoinGroupReplication() error {
+	logger.Debug("Joining group replication", util.M{"replicaIndex": s.RepIndex,
+		"shardIndex": s.ShardIndex, "domain": s.Domain, "tenant": s.Tenant})
 	var db *sql.DB
 	var err error
 	defer func() {
@@ -651,23 +635,28 @@ func (c *SQLNode) JoinGroupReplication() error {
 			db.Close()
 		}
 	}()
-	dsn := c.connectionString(defaultConnDatabaseName)
+	dsn := s.connectionString(defaultConnDatabaseName)
 	// Connect to specific node
 	db, err = sql.Open(defaultConnDatabaseName, dsn)
 	if err != nil {
-		return fmt.Errorf("error connecting to database index %d: %v", c.RepIndex, err)
+		logger.Debug("Error connecting to database", util.M{
+			"dsn":          dsn,
+			"replicaIndex": s.RepIndex,
+			"shardIndex":   s.ShardIndex,
+		})
+		return fmt.Errorf("error connecting to database repindex %d shardIndex %d: %v", s.RepIndex, s.ShardIndex, err)
 	}
 
 	// Common setup queries for all nodes
 	queries := []string{
 		"INSTALL PLUGIN group_replication SONAME 'group_replication.so'",
-		fmt.Sprintf("SET GLOBAL group_replication_group_name = '%s'", c.GroupName),
+		fmt.Sprintf("SET GLOBAL group_replication_group_name = '%s'", s.GroupName),
 		fmt.Sprintf("SET GLOBAL group_replication_local_address = '%s:%d'",
-			c.GroupReplicationHosts(c.ShardIndex)[c.RepIndex], groupRepDefaultPort),
+			s.GroupReplicationHosts(s.ShardIndex)[s.RepIndex], groupRepDefaultPort),
 		fmt.Sprintf("SET GLOBAL group_replication_group_seeds = '%s'",
-			strings.Join(c.GroupReplicationAddresses(), ",")),
+			strings.Join(s.GroupReplicationAddresses(), ",")),
 		fmt.Sprintf("SET GLOBAL group_replication_ip_allowlist = '172.18.0.0/16,127.0.0.1,%s'",
-			strings.Join(c.GroupReplicationHosts(c.ShardIndex), ",")),
+			strings.Join(s.GroupReplicationHosts(s.ShardIndex), ",")),
 		"SET SQL_LOG_BIN = 0",
 		"CREATE USER 'repl'@'%' IDENTIFIED with mysql_native_password BY 'strong_password'",
 		"GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'repl'@'%'",
@@ -682,18 +671,19 @@ func (c *SQLNode) JoinGroupReplication() error {
 			logger.Debug("Error executing query", util.M{
 				"query":        query,
 				"error":        err,
-				"replicaIndex": c.RepIndex,
+				"replicaIndex": s.RepIndex,
+				"shardIndex":   s.ShardIndex,
 			})
-			return fmt.Errorf("error executing query on replica index %d: %v", c.RepIndex, err)
+			return fmt.Errorf("error executing query on replica index %d, shardIndex: %d, %w", s.RepIndex, s.ShardIndex, err)
 		}
 	}
 
 	// Node-specific configuration
-	if c.RepIndex == 0 {
+	if s.RepIndex == 0 {
 		// Bootstrap node
 		_, err = db.Exec("SET GLOBAL group_replication_bootstrap_group = ON")
 		if err != nil {
-			return fmt.Errorf("error setting bootstrap on replica index %d: %v", c.RepIndex, err)
+			return fmt.Errorf("error setting bootstrap on replica index %d: %v", s.RepIndex, err)
 		}
 	} else {
 		// Secondary nodes
@@ -710,9 +700,9 @@ func (c *SQLNode) JoinGroupReplication() error {
 				logger.Debug("Error executing secondary query", util.M{
 					"query":        query,
 					"error":        err,
-					"replicaIndex": c.RepIndex,
+					"replicaIndex": s.RepIndex,
 				})
-				return fmt.Errorf("error executing secondary query on replica index %d: %v", c.RepIndex, err)
+				return fmt.Errorf("error executing secondary query on replica index %d: %v", s.RepIndex, err)
 			}
 		}
 	}
@@ -729,16 +719,16 @@ func (c *SQLNode) JoinGroupReplication() error {
 			logger.Debug("Error executing final query", util.M{
 				"query":        query,
 				"error":        err,
-				"replicaIndex": c.RepIndex,
+				"replicaIndex": s.RepIndex,
 			})
-			return fmt.Errorf("error executing final query on replica index %d: %v", c.RepIndex, err)
+			return fmt.Errorf("error executing final query on replica index %d: %v", s.RepIndex, err)
 		}
 	}
 
 	// Check replication status
 	rows, err := db.Query("SELECT * FROM performance_schema.replication_group_members")
 	if err != nil {
-		return fmt.Errorf("error querying replication status on replica index %d: %v", c.RepIndex, err)
+		return fmt.Errorf("error querying replication status on replica index %d: %v", s.RepIndex, err)
 	}
 	defer rows.Close()
 
@@ -749,7 +739,7 @@ func (c *SQLNode) JoinGroupReplication() error {
 		err := rows.Scan(&channelName, &memberID, &memberHost,
 			&memberPort, &memberRole, &memberState, &memVersion, &memCom)
 		if err != nil {
-			return fmt.Errorf("error scanning replication status on replica index %d: %v", c.RepIndex, err)
+			return fmt.Errorf("error scanning replication status on replica index %d: %v", s.RepIndex, err)
 		}
 		logger.Info("Replica added", util.M{
 			"memberHost":  memberHost,
