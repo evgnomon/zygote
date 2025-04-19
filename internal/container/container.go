@@ -19,16 +19,24 @@ import (
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/api/types/volume"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
+	"github.com/evgnomon/zygote/internal/util"
 )
 
-const dockerVersion = "1.41"
-const dockerNetworkName = "DOCKER_NETWORK_NAME"
-const defaultNetworkName = "mynet"
+const (
+	HostNetworkName              = "host"
+	defaultContainerStartTimeout = 120 * time.Second
+	defaultNetworkName           = "mynet"
+	dockerVersion                = "1.41"
+	networkNameEnvVar            = "DOCKER_NETWORK_NAME"
+)
+
+var logger = util.NewLogger()
 
 func AppNetworkName() string {
-	if os.Getenv(dockerNetworkName) != "" {
-		return os.Getenv(dockerNetworkName)
+	if os.Getenv(networkNameEnvVar) != "" {
+		return os.Getenv(networkNameEnvVar)
 	}
 	return defaultNetworkName
 }
@@ -37,7 +45,6 @@ func CreateClinet() (*client.Client, error) {
 	var dockerPath string
 	switch runtime.GOOS {
 	case "windows":
-		fmt.Println("Running on Windows.")
 		dockerPath = "npipe:////./pipe/docker_engine"
 	case "linux":
 		dockerPath = "unix:///var/run/docker.sock"
@@ -45,7 +52,7 @@ func CreateClinet() (*client.Client, error) {
 		homePath := os.Getenv("HOME")
 		dockerPath = fmt.Sprintf("unix://%s/.docker/run/docker.sock", homePath)
 	default:
-		panic("Unsupported OS")
+		logger.Fatal("Unsupported OS", util.M{"os": runtime.GOOS})
 	}
 	cli, err := client.NewClientWithOpts(client.WithVersion(dockerVersion), client.WithHost(dockerPath))
 	if err != nil {
@@ -56,13 +63,13 @@ func CreateClinet() (*client.Client, error) {
 
 func Spawn(ctx context.Context,
 	cli *client.Client,
-	name string,
+	image string,
 	cmd []string,
 	portMap map[string]string,
 	networkName string,
 ) {
 	config := &containertypes.Config{
-		Image:        name,
+		Image:        image,
 		Cmd:          cmd,
 		AttachStdout: true,
 	}
@@ -81,9 +88,7 @@ func Spawn(ctx context.Context,
 		hostConfig.NetworkMode = containertypes.NetworkMode(networkName)
 	}
 	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, "")
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Create container", err, util.M{"containerName": image})
 
 	// Attach to STDOUT before starting
 	attachOptions := containertypes.AttachOptions{
@@ -93,31 +98,26 @@ func Spawn(ctx context.Context,
 	}
 
 	attachResponse, err := cli.ContainerAttach(ctx, resp.ID, attachOptions)
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Attach to container", err, util.M{"containerID": resp.ID})
 
 	defer attachResponse.Close()
 
-	if err := cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{}); err != nil {
-		panic(err)
-	}
+	err = cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{})
+	logger.FatalIfErr("Start container", err, util.M{"containerID": resp.ID})
 
 	_, err = io.Copy(os.Stdout, attachResponse.Reader)
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Copy output", err, util.M{"containerID": resp.ID})
 }
 
 func SpawnAndWait(ctx context.Context,
 	cli *client.Client,
-	name string,
+	imageName, tenant string,
 	cmd []string,
 	portMap map[string]string,
 	networkName string,
-) error { // Return error instead of panicking
+) error {
 	config := &containertypes.Config{
-		Image:        name,
+		Image:        imageName,
 		Cmd:          cmd,
 		AttachStdout: true,
 	}
@@ -135,10 +135,8 @@ func SpawnAndWait(ctx context.Context,
 		hostConfig.NetworkMode = containertypes.NetworkMode(networkName)
 	}
 
-	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, "")
-	if err != nil {
-		return fmt.Errorf("failed to create container: %v", err)
-	}
+	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, fmt.Sprintf("%s-%d", tenant, time.Now().UnixNano()))
+	logger.FatalIfErr("Create container", err, util.M{"containerName": imageName})
 
 	attachOptions := containertypes.AttachOptions{
 		Stream: true,
@@ -146,20 +144,22 @@ func SpawnAndWait(ctx context.Context,
 		Stderr: true,
 	}
 	attachResponse, err := cli.ContainerAttach(ctx, resp.ID, attachOptions)
-	if err != nil {
-		return fmt.Errorf("failed to attach to container: %v", err)
-	}
+	logger.FatalIfErr("Attach to container", err, util.M{"containerID": resp.ID})
 	defer attachResponse.Close()
 
-	if err := cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{}); err != nil {
-		return fmt.Errorf("failed to start container: %v", err)
-	}
+	Pull(ctx, imageName)
+
+	err = cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{})
+	logger.FatalIfErr("Start container", err, util.M{"containerID": resp.ID})
 
 	// Stream output to stdout
 	go func() {
-		_, err := io.Copy(os.Stdout, attachResponse.Reader)
+		data, err := io.ReadAll(attachResponse.Reader)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error copying output: %v\n", err)
+		}
+		if len(data) != 0 {
+			logger.Debug("Container output", util.M{"message": data})
 		}
 	}()
 
@@ -167,20 +167,18 @@ func SpawnAndWait(ctx context.Context,
 	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, containertypes.WaitConditionNotRunning)
 	select {
 	case err := <-errCh:
-		if err != nil {
-			return fmt.Errorf("error waiting for container: %v", err)
-		}
+		logger.FatalIfErr("Wait for container", err, util.M{"containerID": resp.ID})
 	case status := <-statusCh:
 		if status.StatusCode != 0 {
+			logger.Debug("Container exited with non-zero status", util.M{"image": imageName, "cmd": cmd})
 			return fmt.Errorf("container exited with non-zero status: %d", status.StatusCode)
 		}
 	}
-
 	return nil
 }
 
 func SpawnWithInput(
-	name string,
+	name, tenant string,
 	cmd []string,
 	portMap map[string]string,
 	volumeMap map[string]string,
@@ -189,18 +187,14 @@ func SpawnWithInput(
 	ctx := context.Background()
 
 	cli, err := CreateClinet()
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Create Docker client", err)
 
 	var binds []string
 	for volumeName, mountPath := range volumeMap {
 		_, err := cli.VolumeInspect(ctx, volumeName)
 		if err != nil {
 			_, err := cli.VolumeCreate(ctx, volume.CreateOptions{Name: volumeName})
-			if err != nil {
-				panic(err)
-			}
+			logger.FatalIfErr("Create volume", err, util.M{"volumeName": volumeName})
 		}
 		bind := volumeName + ":" + mountPath
 		binds = append(binds, bind)
@@ -210,20 +204,18 @@ func SpawnWithInput(
 	if err != nil {
 		_, err = cli.NetworkCreate(ctx, networkName, networktypes.CreateOptions{})
 	}
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Create network", err, util.M{"networkName": networkName})
 
 	config := &containertypes.Config{
 		Image:        name,
 		Cmd:          cmd,
-		AttachStdout: true,
+		AttachStdout: false,
 		AttachStdin:  true, // Enable STDIN attachment
-
-		AttachStderr: true,
+		AttachStderr: false,
 		// Tty:          true,
-		OpenStdin: true,
-		StdinOnce: true,
+		OpenStdin:       true,
+		StdinOnce:       true,
+		NetworkDisabled: true,
 	}
 	portBindings := nat.PortMap{}
 
@@ -241,38 +233,21 @@ func SpawnWithInput(
 		hostConfig.NetworkMode = containertypes.NetworkMode(networkName)
 	}
 
-	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, "")
-	if err != nil {
-		panic(err)
-	}
+	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, fmt.Sprintf("%s-%d", tenant, time.Now().UnixNano()))
+	logger.FatalIfErr("Create container", err, util.M{"containerName": name})
 
 	// Attach to STDIN, STDOUT, and STDERR before starting
 	attachOptions := containertypes.AttachOptions{
 		Stream: true,
 		Stdin:  inputStr != "", // Enable STDIN attachment
-		Stdout: true,
-		Stderr: true,
+		Stdout: false,
+		Stderr: false,
 	}
 
 	attachResponse, err := cli.ContainerAttach(ctx, resp.ID, attachOptions)
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Attach to container", err, util.M{"containerID": resp.ID})
 
 	defer attachResponse.Close()
-
-	go func() {
-		_, err := io.Copy(os.Stdout, attachResponse.Reader)
-		if err != nil {
-			log.Println("Warn:", err)
-		}
-	}()
-	go func() {
-		_, err := io.Copy(os.Stderr, attachResponse.Reader)
-		if err != nil {
-			log.Println("Warn:", err)
-		}
-	}()
 
 	var wg sync.WaitGroup
 	if inputStr != "" {
@@ -282,13 +257,9 @@ func SpawnWithInput(
 			// Write your input string to the container's STDIN
 			inputWithNewline := inputStr + "\n"
 			n, err := attachResponse.Conn.Write([]byte(inputWithNewline))
-			if err != nil {
-				fmt.Println("Error:", err)
-				panic("Failed to write to container's STDIN due to error")
-			}
+			logger.FatalIfErr("Write to container's STDIN", err, util.M{"input": inputWithNewline, "name": name})
 			if n != len(inputWithNewline) {
-				fmt.Println("Bytes written:", n)
-				panic("Failed to write to container's STDIN due to length mismatch")
+				logger.Fatal("Failed to write to container's STDIN", util.M{"expected": len(inputWithNewline), "actual": n})
 			}
 			time.Sleep(1 * time.Second)
 			attachResponse.Close()
@@ -297,16 +268,13 @@ func SpawnWithInput(
 		wg.Wait()
 	}
 
-	if err := cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{}); err != nil {
-		panic(err)
-	}
-
+	err = cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{})
+	logger.FatalIfErr("Start container", err, util.M{"containerID": resp.ID})
 	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, containertypes.WaitConditionNotRunning)
 	select {
 	case err := <-errCh:
-		if err != nil {
-			panic(err)
-		}
+		logger.FatalIfErr("Wait for container", err, util.M{"containerID": resp.ID})
+
 	case <-statusCh:
 		// Container has stopped
 	}
@@ -321,7 +289,7 @@ func SpawnWithInput(
 //  1. Adds an 'exit 0' to the script to ensure graceful termination.
 //  2. Sets the container image and other configurations.
 //  3. Spawns the container with the provided input.
-func Ark(script string) {
+func Ark(tenant, script string) {
 	scriptWithExit := fmt.Sprintf("%s \n exit 0;", script)
 
 	imageName := "ghcr.io/evgnomon/ark:main"
@@ -329,7 +297,7 @@ func Ark(script string) {
 	portMapping := map[string]string{}
 	networkName := AppNetworkName()
 
-	SpawnWithInput(imageName, command, portMapping, nil, networkName, scriptWithExit)
+	SpawnWithInput(imageName, tenant, command, portMapping, nil, networkName, scriptWithExit)
 }
 
 // Vol is a function that creates a Docker container from a specific image and runs a command on it.
@@ -343,9 +311,8 @@ func Ark(script string) {
 // - targetFile (string): The name of the file that will be created.
 // - networkName (string): The name of the network that the container will be connected to.
 
-// It uses a defer statement to recover from potential panics and log them.
 // The Docker image used is ghcr.io/evgnomon/ark:main.
-func Vol(srcContent, targetVolume, targetDir, targetFile, networkName string) {
+func Vol(tenant, srcContent, targetVolume, targetDir, targetFile, networkName string) {
 	imageName := "ghcr.io/evgnomon/ark:main"
 	Pull(context.Background(), imageName)
 	command := []string{"bash", "-c", fmt.Sprintf("tee %s/%s", targetDir, targetFile)}
@@ -355,7 +322,7 @@ func Vol(srcContent, targetVolume, targetDir, targetFile, networkName string) {
 		targetVolume: targetDir,
 	}
 
-	SpawnWithInput(imageName, command, portMapping, volMap, networkName, srcContent)
+	SpawnWithInput(imageName, tenant, command, portMapping, volMap, networkName, srcContent)
 }
 
 type Container struct {
@@ -371,9 +338,7 @@ func ListRunningContainers(opt *containertypes.ListOptions) {
 
 func List(opts ...ListOption) []*Container {
 	cli, err := CreateClinet()
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Create Docker client", err)
 
 	opt := containertypes.ListOptions{All: true}
 	for _, o := range opts {
@@ -381,9 +346,7 @@ func List(opts ...ListOption) []*Container {
 	}
 
 	containers, err := cli.ContainerList(context.Background(), opt)
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("List containers", err)
 
 	result := []*Container{}
 
@@ -399,9 +362,7 @@ func List(opts ...ListOption) []*Container {
 func RemoveContainer(containerID string) {
 	ctx := context.Background()
 	cli, err := CreateClinet()
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Create Docker client", err)
 
 	removeOptions := containertypes.RemoveOptions{
 		RemoveVolumes: true,
@@ -409,41 +370,32 @@ func RemoveContainer(containerID string) {
 	}
 
 	err = cli.ContainerStop(ctx, containerID, containertypes.StopOptions{Signal: "SIGTERM"})
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Stop container", err, util.M{"containerID": containerID})
 
 	if err := cli.ContainerRemove(ctx, containerID, removeOptions); err != nil {
-		panic(err)
+		logger.FatalIfErr("Remove container", err, util.M{"containerID": containerID})
 	}
 }
 
 func RemoveVolumePrefix(volumePrefix string) {
 	cli, err := CreateClinet()
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Create Docker client", err)
 
 	volumes, err := cli.VolumeList(context.Background(), volume.ListOptions{})
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("List volumes", err, util.M{"volumePrefix": volumePrefix})
 
 	for _, volume := range volumes.Volumes {
 		if strings.HasPrefix(volume.Name, volumePrefix) {
 			err := cli.VolumeRemove(context.Background(), volume.Name, false)
-			if err != nil {
-				fmt.Println("Error removing volume:", err)
-			}
+			logger.FatalIfErr("Remove volume", err, util.M{"volumeName": volume.Name})
 		}
 	}
 }
 
 func WaitHealthy(namePrefix string, timeout time.Duration) bool {
 	cli, err := CreateClinet()
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Create Docker client", err)
+
 	containers := List()
 	healthChans := []<-chan bool{}
 	for _, container := range containers {
@@ -464,7 +416,7 @@ func checkHealth(cli *client.Client, containerID string, timeout time.Duration) 
 	healthChan := make(chan bool)
 	cli, err := CreateClinet()
 	if err != nil {
-		panic(err)
+		logger.FatalIfErr("Create Docker client", err)
 	}
 	steps := 200 * time.Millisecond
 	go func() {
@@ -472,7 +424,7 @@ func checkHealth(cli *client.Client, containerID string, timeout time.Duration) 
 		for count := int64(0); count < int64(timeout)/int64(steps); count++ {
 			inspectData, err := cli.ContainerInspect(context.Background(), containerID)
 			if err != nil {
-				fmt.Println("Error inspecting container:", err)
+				logger.Error("Error inspecting container", err)
 				healthChan <- false
 				return
 			}
@@ -494,14 +446,11 @@ type DockerConfig struct {
 func GetAuthString(image string) string {
 	// Read Docker config
 	usr, err := user.Current()
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Get current user", err)
+
 	dockerConfigPath := usr.HomeDir + "/.docker/config.json"
 	file, err := os.ReadFile(dockerConfigPath)
-	if err != nil {
-		return ""
-	}
+	logger.FatalIfErr("Read Docker config file", err)
 	var dockerConfig DockerConfig
 	err = json.Unmarshal(file, &dockerConfig)
 	if err != nil {
@@ -520,9 +469,8 @@ func GetAuthString(image string) string {
 
 	// Pull image
 	encodedJSON, err := json.Marshal(authConfig)
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Marshal auth config", err)
+
 	authStr := string(encodedJSON)
 	return authStr
 }
@@ -537,15 +485,12 @@ func Pull(ctx context.Context, image string) {
 	}
 
 	images, err := cli.ImageList(ctx, imagetypes.ListOptions{})
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("List images", err)
 
 	for i := range images {
 		img := &images[i]
 		for _, tag := range img.RepoTags {
 			if tag == image {
-				fmt.Println("Image already exists:", image)
 				return
 			}
 		}
@@ -558,16 +503,124 @@ func Pull(ctx context.Context, image string) {
 		imgFullName = "docker.io/library/" + image
 	}
 
-	print("Pulling image: " + imgFullName + "\n")
-
 	reader, err := cli.ImagePull(ctx, imgFullName, imagetypes.PullOptions{RegistryAuth: authStr})
+	logger.FatalIfErr("Image pull", err, util.M{"image": image})
+	logger.Debug("Pulling image", util.M{"image": image})
+	_, err = io.ReadAll(reader)
 	if err != nil {
-		panic(err)
+		logger.Fatal("Image pull failed", util.M{"error": err})
 	}
-	defer reader.Close()
 
-	_, err = io.Copy(os.Stdout, reader)
-	if err != nil {
-		panic(err)
+	err = reader.Close()
+	logger.Warning("Close reader", util.M{"image": image, "error": err})
+}
+
+type NetworkConfig struct {
+	Name string
+}
+
+func NewNetworkConfig(imageName string) *NetworkConfig {
+	return &NetworkConfig{
+		Name: imageName,
 	}
+}
+
+func (n *NetworkConfig) Ensure(ctx context.Context) {
+	cli, err := CreateClinet()
+	logger.FatalIfErr("Create Docker client", err, util.M{"networkName": n.Name})
+	if n.Name != HostNetworkName {
+		_, err := cli.NetworkInspect(ctx, n.Name, networktypes.InspectOptions{})
+		if err != nil {
+			_, err = cli.NetworkCreate(ctx, n.Name, networktypes.CreateOptions{})
+			logger.FatalIfErr("Create network", err, util.M{"networkName": n.Name})
+		}
+	}
+}
+
+// ContainerConfig holds configuration parameters for creating a container
+type ContainerConfig struct {
+	Name          string
+	NetworkName   string
+	Image         string
+	HealthCommand []string
+	Bindings      []string
+	Caps          []string
+	EnvVars       []string
+	Cmd           []string
+	Ports         map[int]int
+}
+
+// StartContainer creates and starts a container based on the configuration
+func (c *ContainerConfig) StartContainer(ctx context.Context) error {
+	cli, err := CreateClinet()
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+
+	exposedPorts := nat.PortSet{}
+	for _, target := range c.Ports {
+		exposedPorts[nat.Port(fmt.Sprint(target))] = struct{}{}
+	}
+
+	config := &containertypes.Config{
+		Image:        c.Image,
+		Env:          c.EnvVars,
+		ExposedPorts: exposedPorts,
+		Healthcheck: &containertypes.HealthConfig{
+			Test:     c.HealthCommand,
+			Timeout:  40 * time.Second,
+			Retries:  20,
+			Interval: 1 * time.Second,
+		},
+		Cmd: c.Cmd,
+	}
+
+	natBindings := map[nat.Port][]nat.PortBinding{}
+	for exposed, target := range c.Ports {
+		natBindings[nat.Port(fmt.Sprint(target))] = []nat.PortBinding{
+			{
+				HostIP:   "0.0.0.0",
+				HostPort: fmt.Sprintf("%d", exposed),
+			},
+		}
+	}
+
+	hostConfig := &containertypes.HostConfig{
+		Binds:  c.Bindings,
+		CapAdd: c.Caps,
+		RestartPolicy: containertypes.RestartPolicy{
+			Name: containertypes.RestartPolicyAlways,
+		},
+	}
+
+	if c.NetworkName != HostNetworkName {
+		hostConfig.PortBindings = natBindings
+	}
+
+	if c.NetworkName != "" {
+		hostConfig.NetworkMode = containertypes.NetworkMode(c.NetworkName)
+		if c.NetworkName == HostNetworkName {
+			hostConfig.NetworkMode = HostNetworkName
+		}
+	}
+
+	Pull(ctx, c.Image)
+	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, c.Name)
+	if err != nil {
+		if errdefs.IsConflict(err) {
+			logger.Warning("Container already exists: %s", util.M{"containerName": c.Name})
+			return nil
+		}
+		return fmt.Errorf("failed to create container: %w", err)
+	}
+
+	if err := cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{}); err != nil {
+		return fmt.Errorf("failed to start container: %w", err)
+	}
+
+	ok := WaitHealthy(c.Name, defaultContainerStartTimeout)
+	if !ok {
+		return fmt.Errorf("container %s is not healthy", c.Name)
+	}
+	return nil
 }

@@ -9,15 +9,17 @@ import (
 func TestMemShard_createRedisClusterCommand(t *testing.T) {
 	tests := []struct {
 		name     string
-		memShard *MemShard
+		memShard *MemNode
 		want     []string
 	}{
 		{
 			name: "Single shard with one replica",
-			memShard: &MemShard{
-				ShardSize: 2,
-				NumShards: 1,
-				Domain:    "example.com",
+			memShard: &MemNode{
+				ShardSize:   2,
+				NumShards:   1,
+				Domain:      "example.com",
+				Tenant:      "zygote",
+				NetworkName: "host",
 			},
 			want: []string{
 				"redis-cli", "--cluster", "create",
@@ -29,10 +31,12 @@ func TestMemShard_createRedisClusterCommand(t *testing.T) {
 		},
 		{
 			name: "two shard with single master",
-			memShard: &MemShard{
-				ShardSize: 1,
-				NumShards: 2,
-				Domain:    "example.com",
+			memShard: &MemNode{
+				ShardSize:   1,
+				NumShards:   2,
+				Domain:      "example.com",
+				Tenant:      "zygote",
+				NetworkName: "host",
 			},
 			want: []string{
 				"redis-cli", "--cluster", "create",
@@ -44,10 +48,12 @@ func TestMemShard_createRedisClusterCommand(t *testing.T) {
 		},
 		{
 			name: "Two shards with one replica",
-			memShard: &MemShard{
-				ShardSize: 2,
-				NumShards: 2,
-				Domain:    "test.com",
+			memShard: &MemNode{
+				ShardSize:   2,
+				NumShards:   2,
+				Domain:      "test.com",
+				Tenant:      "zygote",
+				NetworkName: "host",
 			},
 			want: []string{
 				"redis-cli", "--cluster", "create",
@@ -61,10 +67,12 @@ func TestMemShard_createRedisClusterCommand(t *testing.T) {
 		},
 		{
 			name: "Three shards with two replicas",
-			memShard: &MemShard{
-				ShardSize: 3,
-				NumShards: 3,
-				Domain:    "cluster.local",
+			memShard: &MemNode{
+				ShardSize:   3,
+				NumShards:   3,
+				Domain:      "cluster.local",
+				Tenant:      "zygote",
+				NetworkName: "host",
 			},
 			want: []string{
 				"redis-cli", "--cluster", "create",
