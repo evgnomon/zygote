@@ -26,7 +26,7 @@ import (
 
 const (
 	HostNetworkName              = "host"
-	defaultContainerStartTimeout = 50 * time.Second
+	defaultContainerStartTimeout = 120 * time.Second
 	defaultNetworkName           = "mynet"
 	dockerVersion                = "1.41"
 	networkNameEnvVar            = "DOCKER_NETWORK_NAME"
@@ -170,6 +170,7 @@ func SpawnAndWait(ctx context.Context,
 		logger.FatalIfErr("Wait for container", err, util.M{"containerID": resp.ID})
 	case status := <-statusCh:
 		if status.StatusCode != 0 {
+			logger.Debug("Container exited with non-zero status", util.M{"image": imageName, "cmd": cmd})
 			return fmt.Errorf("container exited with non-zero status: %d", status.StatusCode)
 		}
 	}
@@ -567,7 +568,7 @@ func (c *ContainerConfig) StartContainer(ctx context.Context) error {
 		ExposedPorts: exposedPorts,
 		Healthcheck: &containertypes.HealthConfig{
 			Test:     c.HealthCommand,
-			Timeout:  20 * time.Second,
+			Timeout:  40 * time.Second,
 			Retries:  20,
 			Interval: 1 * time.Second,
 		},

@@ -90,10 +90,7 @@ func (c *CertService) FunctionKeyFile(name string) string {
 
 func (c *CertService) MakeRootCert(expiresAt time.Time) error {
 	perFilePath := filepath.Join(c.CaCertDir(), "ca_key.pem")
-	certExist, err := utils.PathExists(perFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to check if file exists: %v", err)
-	}
+	certExist := utils.PathExists(perFilePath)
 	if certExist {
 		logger.Info("Root cert already exists, skipping generation")
 		return nil

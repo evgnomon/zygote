@@ -1,6 +1,7 @@
 package tables
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -141,81 +142,92 @@ const (
 )
 
 // connect establishes a database connection for a shard
-func (m *MultiDBConnector) connect(shardIndex int, connType connectionType) (*sql.DB, error) {
-	// Get config
-	m.mutex.RLock()
-	config, exists := m.configs[shardIndex]
-	m.mutex.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("configuration for shard index %d not found", shardIndex)
+func (m *MultiDBConnector) connect(ctx context.Context, shardIndex int, connType connectionType) (*sql.DB, error) {
+	var db *sql.DB
+	var err error
+	b := utils.BackoffConfig{
+		MaxAttempts:  3,
+		InitialDelay: 5 * time.Second,
+		MaxDelay:     1 * time.Minute,
 	}
+	err = b.Retry(ctx, func() error {
+		// Get config
+		m.mutex.RLock()
+		config, exists := m.configs[shardIndex]
+		m.mutex.RUnlock()
 
-	// Select appropriate connection map and port
-	var conns map[int]*sql.DB
-	var port int
-	switch connType {
-	case readConn:
-		conns = m.readConns
-		port = config.ReadPort
-	case writeConn:
-		conns = m.writeConns
-		port = config.WritePort
-	default:
-		return nil, fmt.Errorf("invalid connection type: %s", connType)
-	}
+		if !exists {
+			return fmt.Errorf("configuration for shard index %d not found", shardIndex)
+		}
 
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+		// Select appropriate connection map and port
+		var conns map[int]*sql.DB
+		var port int
+		switch connType {
+		case readConn:
+			conns = m.readConns
+			port = config.ReadPort
+		case writeConn:
+			conns = m.writeConns
+			port = config.WritePort
+		default:
+			return fmt.Errorf("invalid connection type: %s", connType)
+		}
 
-	// Check existing connection
-	if db, ok := conns[shardIndex]; ok && db.Ping() == nil {
-		return db, nil
-	}
+		m.mutex.Lock()
+		defer m.mutex.Unlock()
 
-	// Construct DSN
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
-		config.User,
-		config.Password,
-		config.Host,
-		port,
-		config.Database,
-	)
+		var ok bool
+		// Check existing connection
+		if db, ok = conns[shardIndex]; ok && db.Ping() == nil {
+			return nil
+		}
 
-	// Create connection
-	db, err := sql.Open("mysql", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to shard %d %s: %v", shardIndex, connType, err)
-	}
+		// Construct DSN
+		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
+			config.User,
+			config.Password,
+			config.Host,
+			port,
+			config.Database,
+		)
 
-	// Configure connection pool
-	db.SetMaxOpenConns(config.MaxOpenConns)
-	db.SetMaxIdleConns(config.MaxIdleConns)
-	db.SetConnMaxLifetime(config.ConnMaxLifetime)
+		// Create connection
+		db, err = sql.Open("mysql", dsn)
+		if err != nil {
+			return fmt.Errorf("failed to connect to shard %d %s: %v", shardIndex, connType, err)
+		}
 
-	// Test connection
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to ping shard %d %s: %v", shardIndex, connType, err)
-	}
+		// Configure connection pool
+		db.SetMaxOpenConns(config.MaxOpenConns)
+		db.SetMaxIdleConns(config.MaxIdleConns)
+		db.SetConnMaxLifetime(config.ConnMaxLifetime)
 
-	// Store connection
-	conns[shardIndex] = db
-	return db, nil
+		// Test connection
+		if err := db.Ping(); err != nil {
+			db.Close()
+			return fmt.Errorf("failed to ping shard %d %s: %v", shardIndex, connType, err)
+		}
+
+		// Store connection
+		conns[shardIndex] = db
+		return nil
+	})
+	return db, err
 }
 
 // ConnectRead establishes a read connection for a shard
-func (m *MultiDBConnector) ConnectRead(shardIndex int) (*sql.DB, error) {
-	return m.connect(shardIndex, readConn)
+func (m *MultiDBConnector) ConnectRead(ctx context.Context, shardIndex int) (*sql.DB, error) {
+	return m.connect(ctx, shardIndex, readConn)
 }
 
 // ConnectWrite establishes a write connection for a shard
-func (m *MultiDBConnector) ConnectWrite(shardIndex int) (*sql.DB, error) {
-	return m.connect(shardIndex, writeConn)
+func (m *MultiDBConnector) ConnectWrite(ctx context.Context, shardIndex int) (*sql.DB, error) {
+	return m.connect(ctx, shardIndex, writeConn)
 }
 
 // ConnectAllShardsRead connects to all shards for read in parallel
-func (m *MultiDBConnector) ConnectAllShardsRead() (map[int]*sql.DB, error) {
+func (m *MultiDBConnector) ConnectAllShardsRead(ctx context.Context) (map[int]*sql.DB, error) {
 	endpoints, err := CalculateShardEndpoints(m.network, m.domain, m.numShards, m.taregtReadPort, m.targetWritePort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate shard endpoints: %v", err)
@@ -248,7 +260,7 @@ func (m *MultiDBConnector) ConnectAllShardsRead() (map[int]*sql.DB, error) {
 			}
 
 			// Connect to shard read
-			db, err := m.ConnectRead(index)
+			db, err := m.ConnectRead(ctx, index)
 			if err != nil {
 				mu.Lock()
 				connectErrors = append(connectErrors, fmt.Errorf("failed to connect to shard %d read: %v", index, err))
@@ -272,7 +284,7 @@ func (m *MultiDBConnector) ConnectAllShardsRead() (map[int]*sql.DB, error) {
 }
 
 // ConnectAllShardsWrite connects to all shards for write in parallel
-func (m *MultiDBConnector) ConnectAllShardsWrite() (map[int]*sql.DB, error) {
+func (m *MultiDBConnector) ConnectAllShardsWrite(ctx context.Context) (map[int]*sql.DB, error) {
 	endpoints, err := CalculateShardEndpoints(m.network, m.domain, m.numShards, m.taregtReadPort, m.targetWritePort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate shard endpoints: %v", err)
@@ -303,7 +315,7 @@ func (m *MultiDBConnector) ConnectAllShardsWrite() (map[int]*sql.DB, error) {
 			}
 
 			// Connect to shard write
-			db, err := m.ConnectWrite(index)
+			db, err := m.ConnectWrite(ctx, index)
 			if err != nil {
 				mu.Lock()
 				connectErrors = append(connectErrors, fmt.Errorf("failed to connect to shard %d write: %v", index, err))
@@ -429,7 +441,7 @@ func isTransientError(err error) bool {
 }
 
 // RetryOperation executes a database operation (read or write) with retries and backoff
-func (m *MultiDBConnector) RetryOperation(shardIndex int, operation func(*sql.DB) error, isWrite bool) error {
+func (m *MultiDBConnector) RetryOperation(ctx context.Context, shardIndex int, operation func(*sql.DB) error, isWrite bool) error {
 	var db *sql.DB
 	var err error
 
@@ -446,12 +458,13 @@ func (m *MultiDBConnector) RetryOperation(shardIndex int, operation func(*sql.DB
 		return fmt.Errorf("failed to get %s connection for shard %d: %v", opType, shardIndex, err)
 	}
 
-	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = 10 * time.Second
-	b.InitialInterval = 100 * time.Millisecond
-	b.MaxInterval = 2 * time.Second
+	ic := utils.BackoffConfig{
+		MaxAttempts:  3,
+		InitialDelay: 100 * time.Millisecond,
+		MaxDelay:     20 * time.Second,
+	}
 
-	return backoff.Retry(func() error {
+	return ic.Retry(ctx, func() error {
 		err = operation(db)
 		if err != nil {
 			if isTransientError(err) {
@@ -464,22 +477,22 @@ func (m *MultiDBConnector) RetryOperation(shardIndex int, operation func(*sql.DB
 			return backoff.Permanent(fmt.Errorf("%s operation failed for shard %d: %v", opType, shardIndex, err))
 		}
 		return nil
-	}, b)
+	})
 }
 
 // RetryReadOperation executes a read operation with retries and backoff
-func (m *MultiDBConnector) RetryReadOperation(shardIndex int, operation func(*sql.DB) error) error {
-	return m.RetryOperation(shardIndex, operation, false)
+func (m *MultiDBConnector) RetryReadOperation(ctx context.Context, shardIndex int, operation func(*sql.DB) error) error {
+	return m.RetryOperation(ctx, shardIndex, operation, false)
 }
 
 // RetryWriteOperation executes a write operation with retries and backoff
-func (m *MultiDBConnector) RetryWriteOperation(shardIndex int, operation func(*sql.DB) error) error {
-	return m.RetryOperation(shardIndex, operation, true)
+func (m *MultiDBConnector) RetryWriteOperation(ctx context.Context, shardIndex int, operation func(*sql.DB) error) error {
+	return m.RetryOperation(ctx, shardIndex, operation, true)
 }
 
 // GenericQueryHandler handles SQL queries with a provided query and struct type
-func (m *MultiDBConnector) GenericQueryHandler(shardIndex int, query string, resultStruct any, c echo.Context) error {
-	return m.RetryReadOperation(shardIndex, func(db *sql.DB) error {
+func (m *MultiDBConnector) GenericQueryHandler(ctx context.Context, shardIndex int, query string, resultStruct any, c echo.Context) error {
+	return m.RetryReadOperation(ctx, shardIndex, func(db *sql.DB) error {
 		rows, err := db.QueryContext(c.Request().Context(), query)
 		if err != nil {
 			logger.Debug("Failed to execute query", util.WrapError(err))

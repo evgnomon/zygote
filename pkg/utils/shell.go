@@ -85,6 +85,7 @@ func RunWithOpts(opts RunOpts, argv ...string) error {
 		cmd.Stdout = os.Stdout
 	}
 	cmd.Stdin = os.Stdin
+	cmd.Env = os.Environ()
 	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf("run %v failed: %v", argv, err)
@@ -121,22 +122,21 @@ func Script(commands [][]string) error {
 	for _, cmd := range commands {
 		err := Run(cmd...)
 		if err != nil {
-			print("failed to run command: %v", cmd)
 			return fmt.Errorf("failed to running command: %w", err)
 		}
 	}
 	return nil
 }
 
-func PathExists(path string) (bool, error) {
+func PathExists(path string) bool {
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return false, nil
+			return false
 		}
-		return false, fmt.Errorf("error getting path %s: %v", path, err)
+		logger.FatalIfErr("Checking path", err, util.M{"path": path})
 	}
-	return true, nil
+	return true
 }
 
 func DirExists(path string) (bool, error) {
@@ -302,10 +302,7 @@ func RepoVaultPath() string {
 func CreateRepoVault() error {
 	vaultAddress := RepoFullName()
 	vaultFile := fmt.Sprintf("%s.vault", vaultAddress)
-	vaultFileExist, err := PathExists(filepath.Join(UserHome(), ".blueprint", "secrets", fmt.Sprintf("%s.asc", vaultFile)))
-	if err != nil {
-		return err
-	}
+	vaultFileExist := PathExists(filepath.Join(UserHome(), ".blueprint", "secrets", fmt.Sprintf("%s.asc", vaultFile)))
 	s, err := randomString(randLen)
 	logger.FatalIfErr("Error generating random string", err)
 	if vaultFileExist {

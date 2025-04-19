@@ -38,7 +38,6 @@ import (
 )
 
 const httpClientTimeout = 10 * time.Second
-const redisRetryInterval = 10 * time.Second
 const editor = "vi"
 const varChar255 = "VARCHAR(255)"
 const dirPerm = 0755
@@ -46,7 +45,6 @@ const routerReadWritePort = 6446
 const routerReadOnlyPort = 7447
 const defaultShardSize = 3
 const defaultNumShards = 3
-const maxMemClusterCreateRetry = 5
 
 var logger = util.NewLogger()
 
@@ -150,10 +148,7 @@ func buildCommand() *cli.Command {
 				return err
 			}
 
-			secretFilePathExist, err := utils.PathExists(vaultPath)
-			if err != nil {
-				return err
-			}
+			secretFilePathExist := utils.PathExists(vaultPath)
 			if !secretFilePathExist {
 				err = utils.Run("ansible-vault", "create", vaultPath)
 				if err != nil {
@@ -205,10 +200,7 @@ func migrateCommand() *cli.Command {
 			if dir == "" {
 				dir = "sqls"
 			}
-			sqlDirExists, err := utils.PathExists(dir)
-			if err != nil {
-				return fmt.Errorf("failed to check if directory exists: %w", err)
-			}
+			sqlDirExists := utils.PathExists(dir)
 			if !sqlDirExists {
 				return nil
 			}
@@ -220,7 +212,7 @@ func migrateCommand() *cli.Command {
 				Usage: "Apply all pending migrations to update the database schema to the latest version.",
 				Action: func(c *cli.Context) error {
 					ctx := context.Background()
-					m := NewMigration(c.String("directory"))
+					m := migration.NewMigration(c.String("directory"))
 					return m.Up(ctx)
 				},
 			},
@@ -229,7 +221,7 @@ func migrateCommand() *cli.Command {
 				Usage: "Revert the last applied migration to undo changes to the database schema.",
 				Action: func(c *cli.Context) error {
 					ctx := context.Background()
-					m := NewMigration(c.String("directory"))
+					m := migration.NewMigration(c.String("directory"))
 					return m.Down(ctx)
 				},
 			},
@@ -295,22 +287,7 @@ func createNode(ctx context.Context, sn *db.SQLNode) {
 	mc.ShardSize = sn.ShardSize
 	mc.NumShards = sn.NumShards
 	mc.CreateReplica(ctx)
-
-	count := 0
-	if mc.ReplicaIndex == 0 && mc.ShardIndex == 0 {
-		var err error
-		for count < maxMemClusterCreateRetry {
-			err = mc.Init(ctx)
-			if err != nil {
-				logger.FatalIfErr("Init replica", err)
-				time.Sleep(redisRetryInterval)
-				count++
-				continue
-			}
-			break
-		}
-		logger.FatalIfErr("Init replica", err)
-	}
+	mc.Init(ctx)
 }
 
 func joinCommand() *cli.Command {
@@ -1134,6 +1111,12 @@ func smokerCommand() *cli.Command {
 
 			// Create temporary directory and change to it
 			tempDir := "/tmp/smoker"
+			if utils.PathExists(tempDir) {
+				err = os.RemoveAll(tempDir)
+				if err != nil {
+					return fmt.Errorf("failed to remove /tmp/smoker: %w", err)
+				}
+			}
 			err = os.Mkdir(tempDir, dirPerm)
 			if err != nil {
 				return fmt.Errorf("failed to create /tmp/smoker: %w", err)
@@ -1161,24 +1144,24 @@ func smokerCommand() *cli.Command {
 				{"sudo", zygotePath, "init"},
 				{"sudo", "-K"},
 				{zygotePath, "gen", "db", "--name=smokers"},
-				{zygotePath, "gen", "table", "--name=users"},
-				{zygotePath, "gen", "table", "--name=posts"},
-				{zygotePath, "gen", "table", "--name=comments"},
-				{zygotePath, "gen", "col", "--table=users", "--name=name"},
-				{zygotePath, "gen", "col", "--table=users", "--name=email", "--type=string"},
-				{zygotePath, "gen", "index", "--table=users", "--name=email", "--col=email", "-u"},
-				{zygotePath, "gen", "index", "--table=users", "--name", "users_name", "--col", "email", "--col", "name"},
-				{zygotePath, "gen", "col", "--table=users", "--name=active", "--type=bool"},
-				{zygotePath, "gen", "col", "--table=users", "--name=pic", "--type=binary"},
-				{zygotePath, "gen", "col", "--table=users", "--name=age", "--type=double"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=title"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=uuid", "--type=uuid"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=content", "--type=text"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=views", "--type=integer"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=tags", "--type=json"},
-				{zygotePath, "gen", "prop", "--table=posts", "--name=tag", "--type=string", "--path=$.name"},
-				{zygotePath, "gen", "index", "--table=posts", "--name=tags", "--col=tag", "--col=uuid"},
-				{zygotePath, "gen", "index", "-t", "posts", "-n", "content", "--col=content", "--full-text"},
+				{zygotePath, "gen", "table", "--name=users", "--db=smokers"},
+				{zygotePath, "gen", "table", "--name=posts", "--db=smokers"},
+				{zygotePath, "gen", "table", "--name=comments", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=name", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=email", "--type=string", "--db=smokers"},
+				{zygotePath, "gen", "index", "--table=users", "--name=email", "--col=email", "-u", "--db=smokers"},
+				{zygotePath, "gen", "index", "--table=users", "--name", "users_name", "--col", "email", "--col", "name", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=active", "--type=bool", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=pic", "--type=binary", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=age", "--type=double", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=title", "--type=string", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=uuid", "--type=uuid", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=content", "--type=text", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=views", "--type=integer", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=tags", "--type=json", "--db=smokers"},
+				{zygotePath, "gen", "prop", "--table=posts", "--name=tag", "--type=string", "--path=$.name", "--db=smokers"},
+				{zygotePath, "gen", "index", "--table=posts", "--name=tags", "--col=tag", "--col=uuid", "--db=smokers"},
+				{zygotePath, "gen", "index", "-t", "posts", "-n", "content", "--col=content", "--full-text", "--db=smokers"},
 				{zygotePath, "migrate", "up"},
 				{zygotePath, "migrate", "down"},
 				{zygotePath, "migrate", "up"},
@@ -1229,12 +1212,6 @@ func main() {
 	}
 	if err := app.Run(os.Args); err != nil {
 		logger.Error("error running command", err)
-	}
-}
-
-func NewMigration(directory string) *migration.Migration {
-	return &migration.Migration{
-		Directory: directory,
 	}
 }
 

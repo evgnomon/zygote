@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/internal/util"
@@ -111,14 +112,31 @@ func (m *MemNode) createRedisClusterCommand() []string {
 	return cmd
 }
 
-func (m *MemNode) Init(ctx context.Context) error {
+func (m *MemNode) Init(ctx context.Context) {
+	if m.ReplicaIndex != 0 || m.ShardIndex != 0 {
+		return
+	}
+	logger.Debug("Creating Redis cluster", util.M{"replicaIndex": m.ReplicaIndex, "shardIndex": m.ShardIndex})
 	portMap := map[string]string{
 		defaultRedisPortStr: defaultRedisPortStr,
 	}
 	client, err := container.CreateClinet()
-	if err != nil {
-		return fmt.Errorf("failed to create client: %w", err)
+
+	logger.FatalIfErr("Create client for container", err)
+
+	command := strings.Join(m.createRedisClusterCommand(), " ")
+	logger.Debug("Redis command", util.M{"command": command})
+
+	// Configure backoff parameters
+	backoffConfig := utils.BackoffConfig{
+		MaxAttempts:  10,
+		InitialDelay: 1 * time.Second,
+		MaxDelay:     60 * time.Second,
 	}
-	logger.Debug("Redis command", util.M{"command": strings.Join(m.createRedisClusterCommand(), " ")})
-	return container.SpawnAndWait(ctx, client, redisImage, m.Tenant, m.createRedisClusterCommand(), portMap, m.NetworkName)
+
+	// Use exponential backoff for container creation
+	err = backoffConfig.Retry(ctx, func() error {
+		return container.SpawnAndWait(ctx, client, redisImage, m.Tenant, m.createRedisClusterCommand(), portMap, m.NetworkName)
+	})
+	logger.FatalIfErr("Create redis cluster", err)
 }

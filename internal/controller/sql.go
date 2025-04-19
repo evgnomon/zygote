@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/tables"
 	"github.com/labstack/echo/v4"
@@ -27,13 +29,14 @@ type SQLQueryController struct {
 
 func NewSQLQueryController() (*SQLQueryController, error) {
 	// Initialize database configuration
-	connector := tables.NewMultiDBConnector("mynet", "zygote", "my.zygote.run", "mysql",
+	ctx := context.Background()
+	connector := tables.NewMultiDBConnector(container.AppNetworkName(), "zygote", "my.zygote.run", "mysql",
 		routerReadPort, routerWritePort, defaultNumShards)
-	_, err := connector.ConnectAllShardsRead()
+	_, err := connector.ConnectAllShardsRead(ctx)
 	if err != nil {
 		return nil, err
 	}
-	_, err = connector.ConnectAllShardsWrite()
+	_, err = connector.ConnectAllShardsWrite(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +70,7 @@ func (dc *SQLQueryController) QueryHandler(c echo.Context) error {
 	}
 
 	// Execute query with retry on connection loss
-	return dc.connector.RetryReadOperation(0, func(db *sql.DB) error {
+	return dc.connector.RetryReadOperation(c.Request().Context(), 0, func(db *sql.DB) error {
 		rows, err := db.QueryContext(c.Request().Context(), query)
 		if err != nil {
 			return err
@@ -153,7 +156,7 @@ func (dc *SQLQueryController) ClusterStatusHandler(c echo.Context) error {
             performance_schema.replication_group_members
     `
 	var results = []ClusterMember{}
-	err := dc.connector.GenericQueryHandler(0, query, results, c)
+	err := dc.connector.GenericQueryHandler(c.Request().Context(), 0, query, results, c)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "Failed to execute query: " + err.Error(),
