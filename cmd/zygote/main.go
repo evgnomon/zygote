@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -23,7 +24,6 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/mattn/go-shellwords"
 	cli "github.com/urfave/cli/v2"
-	"go.uber.org/zap"
 	"golang.org/x/term"
 
 	"github.com/evgnomon/zygote/cmd/zygote/commands"
@@ -37,17 +37,16 @@ import (
 	"github.com/evgnomon/zygote/pkg/utils"
 )
 
-const containerStartTimeout = 20 * time.Second
 const httpClientTimeout = 10 * time.Second
-const redisRetryInterval = 10 * time.Second
 const editor = "vi"
 const varChar255 = "VARCHAR(255)"
 const dirPerm = 0755
-const routerReadWritePort = 16446
-const routerReadOnlyPort = 17447
+const routerReadWritePort = 6446
+const routerReadOnlyPort = 7447
 const defaultShardSize = 3
-const mysqlRouterConfTmplName = "router.conf"
-const maxMemClusterCreateRetry = 5
+const defaultNumShards = 3
+
+var logger = util.NewLogger()
 
 func vaultCommand() *cli.Command {
 	return &cli.Command{
@@ -144,15 +143,12 @@ func buildCommand() *cli.Command {
 
 			os.Setenv("ANSIBLE_VAULT_PASSWORD_FILE", filepath.Join(utils.UserHome(), ".config", "zygote", "scripts", "vault_pass"))
 
-			vaultPath, err := utils.RepoVaultPath()
+			vaultPath := utils.RepoVaultPath()
 			if err != nil {
 				return err
 			}
 
-			secretFilePathExist, err := utils.PathExists(vaultPath)
-			if err != nil {
-				return err
-			}
+			secretFilePathExist := utils.PathExists(vaultPath)
 			if !secretFilePathExist {
 				err = utils.Run("ansible-vault", "create", vaultPath)
 				if err != nil {
@@ -204,10 +200,7 @@ func migrateCommand() *cli.Command {
 			if dir == "" {
 				dir = "sqls"
 			}
-			sqlDirExists, err := utils.PathExists(dir)
-			if err != nil {
-				return fmt.Errorf("failed to check if directory exists: %w", err)
-			}
+			sqlDirExists := utils.PathExists(dir)
 			if !sqlDirExists {
 				return nil
 			}
@@ -219,7 +212,7 @@ func migrateCommand() *cli.Command {
 				Usage: "Apply all pending migrations to update the database schema to the latest version.",
 				Action: func(c *cli.Context) error {
 					ctx := context.Background()
-					m := NewMigration(c.String("directory"))
+					m := migration.NewMigration(c.String("directory"))
 					return m.Up(ctx)
 				},
 			},
@@ -228,7 +221,7 @@ func migrateCommand() *cli.Command {
 				Usage: "Revert the last applied migration to undo changes to the database schema.",
 				Action: func(c *cli.Context) error {
 					ctx := context.Background()
-					m := NewMigration(c.String("directory"))
+					m := migration.NewMigration(c.String("directory"))
 					return m.Down(ctx)
 				},
 			},
@@ -247,23 +240,54 @@ func initCommand() *cli.Command {
 				Value:   "sqls",
 				Usage:   "Directory containing the SQL migration files.",
 			},
-			&cli.BoolFlag{
-				Name:    "local",
-				Aliases: []string{"l"},
-				Value:   true,
-				Usage:   "Initialize resources using a local instance of Zygote core",
-			},
 		},
 		Action: func(c *cli.Context) error {
 			ctx := context.Background()
-			if c.Bool("local") {
-				err := initSQLClusterLocal(ctx, c.String("directory"))
-				return err
+			var wg sync.WaitGroup
+
+			for shardIndex := 0; shardIndex < defaultNumShards; shardIndex++ {
+				for repIndex := 0; repIndex < defaultShardSize; repIndex++ {
+					sn := db.NewSQLNode()
+					sn.Domain = utils.DomainName()
+					sn.DatabaseName = utils.TenantName()
+					sn.Tenant = utils.TenantName()
+					sn.ShardIndex = shardIndex
+					sn.RepIndex = repIndex
+					sn.NumShards = defaultNumShards
+					sn.ShardSize = defaultShardSize
+					sn.NetworkName = container.AppNetworkName()
+					sn.MigrationDir = c.String("directory")
+					wg.Add(1)
+					go func(sn *db.SQLNode) {
+						defer wg.Done()
+						createNode(ctx, sn)
+					}(sn)
+				}
 			}
-			err := initContainers(ctx, c.String("directory"))
-			return err
+			wg.Wait()
+			return nil
 		},
 	}
+}
+
+func createNode(ctx context.Context, sn *db.SQLNode) {
+	n := container.NewNetworkConfig(sn.NetworkName)
+	n.Ensure(ctx)
+	err := sn.StartSQLContainers(ctx)
+	logger.FatalIfErr("Make SQL node", err)
+	mc := mem.NewMemNode()
+	mc.Domain = sn.Domain
+	mc.Tenant = sn.Tenant
+	mc.ShardIndex = sn.ShardIndex
+	mc.ReplicaIndex = sn.RepIndex
+	mc.NetworkName = sn.NetworkName
+	if mc.NetworkName != container.HostNetworkName {
+		mc.NetworkName = container.AppNetworkName()
+	}
+	mc.ShardSize = sn.ShardSize
+	mc.NumShards = sn.NumShards
+	mc.CreateReplica(ctx)
+	mc.Init(ctx)
 }
 
 func joinCommand() *cli.Command {
@@ -304,49 +328,23 @@ func joinCommand() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			_, err := util.Logger()
-			if err != nil {
-				return err
-			}
 			ctx := context.Background()
-			var cl db.SQLShard
-			cl.Domain = c.String("domain")
-			cl.NetworkName = "host"
-			cl.DatabaseName = c.String("db")
-
+			var sn = db.NewSQLNode()
+			sn.Domain = c.String("domain")
+			sn.NetworkName = container.HostNetworkName
+			sn.DatabaseName = c.String("db")
 			h, err := util.CalculateIndices(c.String("host"))
 			if err != nil {
 				return err
 			}
+			sn.ShardIndex = h.ShardIndex
+			sn.RepIndex = h.RepIndex
+			sn.Tenant = utils.TenantName()
+			sn.RootPassword = "root1234"
+			sn.NumShards = c.Int("num-shards")
+			sn.ShardSize = c.Int("shard-size")
 
-			err = cl.Create(ctx, h.ShardIndex, h.RepIndex)
-			if err != nil {
-				return fmt.Errorf("failed to create shard: %w", err)
-			}
-			mc := mem.NewMemShard(cl.Domain)
-			mc.NumShards = c.Int("num-shards")
-			mc.ShardSize = c.Int("shard-size")
-			err = mc.CreateReplica(h.RepIndex)
-			if err != nil {
-				return fmt.Errorf("failed to create replica: %w", err)
-			}
-			count := 0
-			logging, err := util.Logger()
-			if err != nil {
-				return fmt.Errorf("failed to create logger: %w", err)
-			}
-			if h.RepIndex == 0 && c.Int("shard-index") == 0 {
-				for count < maxMemClusterCreateRetry {
-					err = mc.Init(ctx)
-					if err != nil {
-						logging.Warn("failed to init replica", zap.Error(err))
-						time.Sleep(redisRetryInterval)
-						count++
-						continue
-					}
-					break
-				}
-			}
+			createNode(ctx, sn)
 			return nil
 		},
 	}
@@ -396,45 +394,14 @@ func deinitCommand() *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			for _, v := range container.List() {
-				if strings.HasPrefix(v.Name, "/zygote-") {
+				if strings.HasPrefix(v.Name, fmt.Sprintf("/%s-", utils.TenantName())) {
 					container.RemoveContainer(v.ID)
 				}
 			}
 			if c.Bool("remove-volume") {
-				container.RemoveVolumePrefix("zygote-")
+				container.RemoveVolumePrefix(fmt.Sprintf("%s-", utils.TenantName()))
 			}
 			return nil
-		},
-	}
-}
-
-func runCommand() *cli.Command {
-	return &cli.Command{
-		Name:  "run",
-		Usage: "Run the application",
-		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:  "init",
-				Usage: "Remove volumes associated with the containers",
-			},
-			&cli.StringFlag{
-				Name:    "directory",
-				Aliases: []string{"C"},
-				Value:   "sqls",
-				Usage:   "Directory containing the SQL migration files.",
-			},
-		},
-		Action: func(c *cli.Context) error {
-			for _, v := range container.List() {
-				if strings.HasPrefix(v.Name, "/zygote-") {
-					container.RemoveContainer(v.ID)
-				}
-			}
-			if c.Bool("init") {
-				container.RemoveVolumePrefix("zygote-")
-			}
-			err := initContainers(context.Background(), c.String("directory"))
-			return err
 		},
 	}
 }
@@ -735,8 +702,9 @@ func sqlCommand() *cli.Command {
 		Usage: "SQL shell to interact with the database",
 		Flags: []cli.Flag{
 			&cli.IntFlag{
-				Name:  "n",
-				Usage: "Instance number",
+				Name:  "s",
+				Usage: "shard index",
+				Value: 0,
 			},
 			&cli.StringFlag{
 				Name:  "i",
@@ -751,6 +719,11 @@ func sqlCommand() *cli.Command {
 				Name:    "user",
 				Aliases: []string{"u"},
 				Usage:   "Connect as a user",
+			},
+			&cli.StringFlag{
+				Name:  "host",
+				Usage: "Host name",
+				Value: "127.0.0.1",
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -768,26 +741,18 @@ func sqlCommand() *cli.Command {
 			}
 
 			// Construct the MySQL DSN (Data Source Name)
-			n := c.Int("n")
+			n := c.Int("s")
 			os.Setenv("MYSQL_PWD", password)
-			dbName, err := utils.RepoFullName()
-			if err != nil {
-				return fmt.Errorf("failed to get repo full name: %w", err)
-			}
-
-			portNum := fmt.Sprintf("%d", 3306+n-1)
-			if n == 0 {
-				portNum = fmt.Sprintf("%d", routerReadWritePort)
-			}
+			portNum := fmt.Sprintf("%d", routerReadWritePort+100*n)
 			if c.Bool("read-only") {
-				portNum = fmt.Sprintf("%d", routerReadOnlyPort)
+				portNum = fmt.Sprintf("%d", routerReadOnlyPort+100*n)
 			}
 
-			command := []string{"mysql", "-u", user, "-h", "127.0.0.1", "-P", portNum, "-s", "--auto-rehash", "-D", dbName}
+			command := []string{"mysql", "-u", user, "-h", c.String("host"), "-P", portNum, "-s", "--auto-rehash"}
 			if c.String("i") != "" {
 				command = append(command, "-e", c.String("i"))
 			}
-			err = utils.Run(command...)
+			err := utils.Run(command...)
 			if err != nil {
 				return err
 			}
@@ -835,11 +800,8 @@ func generateDBCommand() *cli.Command {
 		Action: func(c *cli.Context) error {
 			dbName := c.String("name")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 			m, err := db.CreateDatabase(dbName)
 			if err != nil {
@@ -878,11 +840,8 @@ func generateTableCommand() *cli.Command {
 			}
 			dbName := c.String("db")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 
 			m, err := db.CreateTable(dbName, tableName)
@@ -939,11 +898,8 @@ func generateColCommand() *cli.Command {
 
 			dbName := c.String("db")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 
 			colType := c.String("type")
@@ -1020,11 +976,8 @@ func generatePropCommand() *cli.Command {
 
 			dbName := c.String("db")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 
 			m, err := db.CreateProperty(dbName, tableName, colName, fieldPath,
@@ -1091,11 +1044,8 @@ func generateIndexCommand() *cli.Command {
 
 			dbName := c.String("db")
 			if dbName == "" {
-				name, err := utils.RepoFullName()
+				name := utils.RepoFullName()
 				dbName = name
-				if err != nil {
-					return fmt.Errorf("failed to get repo full name: %w", err)
-				}
 			}
 
 			if c.Bool("unique") && c.Bool("full-text") {
@@ -1163,6 +1113,12 @@ func smokerCommand() *cli.Command {
 
 			// Create temporary directory and change to it
 			tempDir := "/tmp/smoker"
+			if utils.PathExists(tempDir) {
+				err = os.RemoveAll(tempDir)
+				if err != nil {
+					return fmt.Errorf("failed to remove /tmp/smoker: %w", err)
+				}
+			}
 			err = os.Mkdir(tempDir, dirPerm)
 			if err != nil {
 				return fmt.Errorf("failed to create /tmp/smoker: %w", err)
@@ -1177,16 +1133,12 @@ func smokerCommand() *cli.Command {
 			defer func() {
 				// Change back to original directory
 				err = os.Chdir(os.Getenv("PWD"))
-				if err != nil {
-					panic(fmt.Errorf("failed to change back to original directory: %w", err))
-				}
+				logger.FatalIfErr("Change back to original directory", err)
 			}()
 
 			defer func() {
 				err = utils.Script([][]string{{"sudo", zygotePath, "deinit", "-v"}})
-				if err != nil {
-					panic(fmt.Errorf("failed to run smoke tests: %w", err))
-				}
+				logger.FatalIfErr("Deinit zygote", err)
 			}()
 			err = utils.Script([][]string{
 				{"rm", "-rf", "./sqls"},
@@ -1194,24 +1146,24 @@ func smokerCommand() *cli.Command {
 				{"sudo", zygotePath, "init"},
 				{"sudo", "-K"},
 				{zygotePath, "gen", "db", "--name=smokers"},
-				{zygotePath, "gen", "table", "--name=users"},
-				{zygotePath, "gen", "table", "--name=posts"},
-				{zygotePath, "gen", "table", "--name=comments"},
-				{zygotePath, "gen", "col", "--table=users", "--name=name"},
-				{zygotePath, "gen", "col", "--table=users", "--name=email", "--type=string"},
-				{zygotePath, "gen", "index", "--table=users", "--name=email", "--col=email", "-u"},
-				{zygotePath, "gen", "index", "--table=users", "--name", "users_name", "--col", "email", "--col", "name"},
-				{zygotePath, "gen", "col", "--table=users", "--name=active", "--type=bool"},
-				{zygotePath, "gen", "col", "--table=users", "--name=pic", "--type=binary"},
-				{zygotePath, "gen", "col", "--table=users", "--name=age", "--type=double"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=title"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=uuid", "--type=uuid"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=content", "--type=text"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=views", "--type=integer"},
-				{zygotePath, "gen", "col", "--table=posts", "--name=tags", "--type=json"},
-				{zygotePath, "gen", "prop", "--table=posts", "--name=tag", "--type=string", "--path=$.name"},
-				{zygotePath, "gen", "index", "--table=posts", "--name=tags", "--col=tag", "--col=uuid"},
-				{zygotePath, "gen", "index", "-t", "posts", "-n", "content", "--col=content", "--full-text"},
+				{zygotePath, "gen", "table", "--name=users", "--db=smokers"},
+				{zygotePath, "gen", "table", "--name=posts", "--db=smokers"},
+				{zygotePath, "gen", "table", "--name=comments", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=name", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=email", "--type=string", "--db=smokers"},
+				{zygotePath, "gen", "index", "--table=users", "--name=email", "--col=email", "-u", "--db=smokers"},
+				{zygotePath, "gen", "index", "--table=users", "--name", "users_name", "--col", "email", "--col", "name", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=active", "--type=bool", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=pic", "--type=binary", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=users", "--name=age", "--type=double", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=title", "--type=string", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=uuid", "--type=uuid", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=content", "--type=text", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=views", "--type=integer", "--db=smokers"},
+				{zygotePath, "gen", "col", "--table=posts", "--name=tags", "--type=json", "--db=smokers"},
+				{zygotePath, "gen", "prop", "--table=posts", "--name=tag", "--type=string", "--path=$.name", "--db=smokers"},
+				{zygotePath, "gen", "index", "--table=posts", "--name=tags", "--col=tag", "--col=uuid", "--db=smokers"},
+				{zygotePath, "gen", "index", "-t", "posts", "-n", "content", "--col=content", "--full-text", "--db=smokers"},
 				{zygotePath, "migrate", "up"},
 				{zygotePath, "migrate", "down"},
 				{zygotePath, "migrate", "up"},
@@ -1231,14 +1183,8 @@ func smokerCommand() *cli.Command {
 func main() {
 	os.Setenv("EDITOR", editor)
 	err := utils.WriteScripts()
-	if err != nil {
-		panic(err)
-	}
-
-	logger, err := util.Logger()
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Write scripts", err)
+	logger := util.NewLogger()
 
 	app := &cli.App{
 		Action: func(_ *cli.Context) error {
@@ -1252,7 +1198,6 @@ func main() {
 			migrateCommand(),
 			initCommand(),
 			deinitCommand(),
-			runCommand(),
 			certCommand(),
 			callCommand(),
 			qCommand(),
@@ -1268,13 +1213,7 @@ func main() {
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
-		logger.Error("error running command", zap.Error(err))
-	}
-}
-
-func NewMigration(directory string) *migration.Migration {
-	return &migration.Migration{
-		Directory: directory,
+		logger.Error("error running command", err)
 	}
 }
 
@@ -1340,82 +1279,4 @@ func (s *HTTPTransportConfig) Client() (*resty.Client, error) {
 
 	client.SetTimeout(httpClientTimeout)
 	return client, nil
-}
-
-func initContainers(ctx context.Context, directory string) error {
-	numShards := 2
-	dbName, err := utils.RepoFullName()
-	if err != nil {
-		return fmt.Errorf("failed to get repo full name: %w", err)
-	}
-	for i := 1; i <= numShards; i++ {
-		sqlParams := container.SQLInitParams{
-			DBName:   dbName,
-			Username: "admin",
-			Password: "password",
-		}
-		sqlStatements, err := container.ApplyTemplate("sql_init_template.sql", sqlParams)
-		if err != nil {
-			return err
-		}
-
-		container.Vol(sqlStatements, fmt.Sprintf("zygote-db-conf-%d", i), "/docker-entrypoint-initdb.d", "init.sql", container.AppNetworkName())
-	}
-	db.CreateDBContainer(2, container.AppNetworkName())
-	mem.CreateMemContainer(3, container.AppNetworkName())
-	container.InitRedisCluster()
-	container.WaitHealthy("zygote-", containerStartTimeout)
-	m := NewMigration(directory)
-	return m.Up(ctx)
-}
-
-func initSQLClusterLocal(ctx context.Context, directory string) error {
-	dbName, err := utils.RepoFullName()
-	if err != nil {
-		return fmt.Errorf("failed to get repo full name: %w", err)
-	}
-	for i := 1; i <= defaultShardSize; i++ {
-		clusterParams := container.InnoDBClusterParams{
-			ServerID:             i,
-			GroupReplicationPort: 33061,
-			ServerCount:          3,
-			ServersList:          "zygote-db-rep-1:33061,zygote-db-rep-2:33061,zygote-db-rep-3:33061",
-			ReportAddress:        fmt.Sprintf("zygote-db-rep-%d", i),
-			ReportPort:           3306 + i - 1,
-		}
-		innodbGroupReplication, err := container.ApplyTemplate("innodb_cluster_template.cnf", clusterParams)
-		if err != nil {
-			return err
-		}
-		sqlParams := container.SQLInitParams{
-			DBName:   dbName,
-			Username: "admin",
-			Password: "password",
-		}
-		sqlStatements, err := container.ApplyTemplate("sql_init_template.sql", sqlParams)
-		if err != nil {
-			return err
-		}
-		routerConfParams := container.RouterConfParams{
-			Destinations: "zygote-db-rep-1:3306,zygote-db-rep-2:3306,zygote-db-rep-3:3306",
-		}
-		routerConf, err := container.ApplyTemplate(mysqlRouterConfTmplName, routerConfParams)
-		if err != nil {
-			return err
-		}
-		container.Vol(sqlStatements, fmt.Sprintf("zygote-db-conf-%d", i), "/docker-entrypoint-initdb.d", "init.sql", container.AppNetworkName())
-
-		container.Vol(innodbGroupReplication, fmt.Sprintf("zygote-db-conf-gr-%d", i), "/etc/mysql/conf.d/", "gr.cnf", container.AppNetworkName())
-
-		container.Vol(routerConf, fmt.Sprintf("zygote-db-router-conf-%d", i), "/etc/mysqlrouter/", "router.conf", container.AppNetworkName())
-	}
-	db.CreateGroupReplicationContainer(3, container.AppNetworkName())
-	container.WaitHealthy("zygote-", containerStartTimeout)
-	db.SetupGroupReplication()
-	db.CreateRouter(0, container.AppNetworkName())
-	container.WaitHealthy("zygote-", containerStartTimeout)
-	mem.CreateMemContainer(3, container.AppNetworkName())
-	container.InitRedisCluster()
-	m := NewMigration(directory)
-	return m.Up(ctx)
 }

@@ -13,8 +13,11 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/evgnomon/zygote/internal/util"
 	toml "github.com/pelletier/go-toml/v2"
 )
+
+var logger = util.NewLogger()
 
 //go:embed scripts/vault_pass
 var vaultPassScript string
@@ -82,6 +85,7 @@ func RunWithOpts(opts RunOpts, argv ...string) error {
 		cmd.Stdout = os.Stdout
 	}
 	cmd.Stdin = os.Stdin
+	cmd.Env = os.Environ()
 	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf("run %v failed: %v", argv, err)
@@ -118,22 +122,21 @@ func Script(commands [][]string) error {
 	for _, cmd := range commands {
 		err := Run(cmd...)
 		if err != nil {
-			print("failed to run command: %v", cmd)
 			return fmt.Errorf("failed to running command: %w", err)
 		}
 	}
 	return nil
 }
 
-func PathExists(path string) (bool, error) {
+func PathExists(path string) bool {
 	_, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return false, nil
+			return false
 		}
-		return false, fmt.Errorf("error getting path %s: %v", path, err)
+		logger.FatalIfErr("Checking path", err, util.M{"path": path})
 	}
-	return true, nil
+	return true
 }
 
 func DirExists(path string) (bool, error) {
@@ -278,50 +281,30 @@ func DecryptFile(filename string) error {
 	return nil
 }
 
-func RepoFullName() (string, error) {
+func RepoFullName() string {
 	repoPath, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("error getting current directory: %v", err)
-	}
+	logger.FatalIfErr("Error getting current directory", err)
 	org := filepath.Base(filepath.Dir(repoPath))
 	repo := filepath.Base(repoPath)
-	if err != nil {
-		fmt.Println("Invalid pattern:", err)
-		return "", fmt.Errorf("error compiling pattern: %v", err)
-	}
-
 	formatted := fmt.Sprintf("%s_%s", org, repo)
-
 	if !pattern.MatchString(formatted) {
-		return "", fmt.Errorf("invalid repo name: %s", formatted)
+		logger.FatalIfErr("Error creating repo name", err)
 	}
-
-	return formatted, nil
+	return formatted
 }
 
-func RepoVaultPath() (string, error) {
-	vaultAddress, err := RepoFullName()
-	if err != nil {
-		return "", err
-	}
+func RepoVaultPath() string {
+	vaultAddress := RepoFullName()
 	secretFile := filepath.Join(UserHome(), ".blueprint", "secrets", fmt.Sprintf("%s.yaml", vaultAddress))
-	return secretFile, nil
+	return secretFile
 }
 
 func CreateRepoVault() error {
-	vaultAddress, err := RepoFullName()
-	if err != nil {
-		return err
-	}
+	vaultAddress := RepoFullName()
 	vaultFile := fmt.Sprintf("%s.vault", vaultAddress)
-	vaultFileExist, err := PathExists(filepath.Join(UserHome(), ".blueprint", "secrets", fmt.Sprintf("%s.asc", vaultFile)))
-	if err != nil {
-		return err
-	}
+	vaultFileExist := PathExists(filepath.Join(UserHome(), ".blueprint", "secrets", fmt.Sprintf("%s.asc", vaultFile)))
 	s, err := randomString(randLen)
-	if err != nil {
-		panic(err)
-	}
+	logger.FatalIfErr("Error generating random string", err)
 	if vaultFileExist {
 		return nil
 	}

@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -13,9 +12,13 @@ import (
 
 	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/evgnomon/zygote/internal/controller"
+	"github.com/evgnomon/zygote/internal/util"
+	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/acme/autocert"
 )
+
+var logger = util.NewLogger()
 
 type Server struct {
 	e       *echo.Echo
@@ -34,10 +37,7 @@ func NewServer() (*Server, error) {
 		return nil, fmt.Errorf("failed to create cert service: %w", err)
 	}
 	s.cs = cs
-	s.domain = "myservice.zygote.run"
-	if os.Getenv("ZCORE_DOMAIN") != "" {
-		s.domain = os.Getenv("ZCORE_DOMAIN")
-	}
+	s.domain = utils.HostName()
 
 	// Configure certificate handling based on ACME flag
 	s.useACME = strings.ToLower(os.Getenv("ACME")) == "true"
@@ -82,7 +82,7 @@ func (s *Server) tlsConfig() (*tls.Config, error) {
 
 		// Start HTTP server for ACME challenges
 		go func() {
-			log.Printf("Starting HTTP server on :80 for Let's Encrypt challenges")
+			logger.Info("Starting HTTP server on :80 for ACME challenges")
 			// Create a new HTTP server with timeouts
 			server := &http.Server{
 				Addr:         ":80",
@@ -94,13 +94,7 @@ func (s *Server) tlsConfig() (*tls.Config, error) {
 
 			// Start the server
 			err := server.ListenAndServe()
-			if err != nil {
-				// Handle error
-				panic(err)
-			}
-			if err != nil {
-				log.Printf("HTTP server error: %v", err)
-			}
+			logger.FatalIfErr("Failed to start HTTP server for ACME challenges", err)
 		}()
 	} else {
 		// Use local certificates
@@ -134,7 +128,7 @@ func (s *Server) Listen() error {
 	}
 
 	// Start the server
-	log.Printf("Starting server on https://%s:%d\n", s.domain, s.port)
+	logger.Info("Starting serverd", util.M{"port": s.port, "domain": s.domain})
 	if s.useACME {
 		err = httpServer.ListenAndServeTLS("", "")
 	} else {

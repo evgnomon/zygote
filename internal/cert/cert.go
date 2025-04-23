@@ -14,11 +14,14 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/utils"
 )
 
 const certDirPermission = 0700
 const int64Bits = 128
+
+var logger = util.NewLogger()
 
 type CertService struct {
 	ConfigHome string
@@ -87,12 +90,9 @@ func (c *CertService) FunctionKeyFile(name string) string {
 
 func (c *CertService) MakeRootCert(expiresAt time.Time) error {
 	perFilePath := filepath.Join(c.CaCertDir(), "ca_key.pem")
-	certExist, err := utils.PathExists(perFilePath)
-	if err != nil {
-		return fmt.Errorf("failed to check if file exists: %v", err)
-	}
+	certExist := utils.PathExists(perFilePath)
 	if certExist {
-		fmt.Printf("root already exists: %s\n", perFilePath)
+		logger.Info("Root cert already exists, skipping generation")
 		return nil
 	}
 

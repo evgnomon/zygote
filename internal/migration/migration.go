@@ -4,38 +4,37 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
-	"strconv"
 
+	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/internal/util"
+	"github.com/evgnomon/zygote/pkg/tables"
 	"github.com/evgnomon/zygote/pkg/utils"
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/mysql"
-	"go.uber.org/zap"
 )
+
+const routerReadWritePort = 6446
+const routerReadOnlyPort = 6447
+const defaultNumShards = 3
+
+var logger = util.NewLogger()
 
 type Migration struct {
 	Directory string
+	Connector *tables.MultiDBConnector
 }
 
 func (m *Migration) Up(_ context.Context) error {
-	logger, err := util.Logger()
-	if err != nil {
-		return fmt.Errorf("failed to get logger: %w", err)
-	}
-	sqlDirExists, err := utils.PathExists(m.Directory)
-	if err != nil {
-		return fmt.Errorf("failed to check if directory exists: %w", err)
-	}
+	sqlDirExists := utils.PathExists(m.Directory)
 	if !sqlDirExists {
 		return nil
 	}
-	logger.Info("migrations up start")
-	db, err := connect(0)
+	logger.Info("migrations up start", nil)
+	db, err := m.Connector.GetWriteConnection(0)
 	if err != nil {
 		return err
 	}
-	m2, err := m.Migrate(logger, db)
+	m2, err := m.Migrate(db)
 	if err != nil {
 		return err
 	}
@@ -45,28 +44,21 @@ func (m *Migration) Up(_ context.Context) error {
 			return err
 		}
 	}
-	logger.Info("migrations up done")
+	logger.Info("migrations up done", nil)
 	return nil
 }
 
 func (m *Migration) Down(_ context.Context) error {
-	logger, err := util.Logger()
-	if err != nil {
-		return fmt.Errorf("failed to get logger: %w", err)
-	}
-	sqlDirExists, err := utils.PathExists(m.Directory)
-	if err != nil {
-		return fmt.Errorf("failed to check if directory exists: %w", err)
-	}
+	sqlDirExists := utils.PathExists(m.Directory)
 	if !sqlDirExists {
 		return nil
 	}
-	logger.Info("migrations down start")
-	db, err := connect(0)
+	logger.Info("migrations down start", nil)
+	db, err := m.Connector.GetWriteConnection(0)
 	if err != nil {
 		return err
 	}
-	m2, err := m.Migrate(logger, db)
+	m2, err := m.Migrate(db)
 	if err != nil {
 		return err
 	}
@@ -76,31 +68,16 @@ func (m *Migration) Down(_ context.Context) error {
 			return err
 		}
 	}
-
 	_, _, err = m2.Version()
 	if err != nil && err != migrate.ErrNilVersion {
 		return err
 	}
-	m2.Close()
-
-	db2, err := connect(0)
-	if err != nil {
-		return err
-	}
-
-	empty, err := isDatabaseEmpty(db2, 0)
-	if err != nil {
-		return err
-	}
-	if !empty {
-		return fmt.Errorf("database is not empty")
-	}
-	logger.Info("migrations down done")
+	logger.Info("migrations down done", nil)
 	return nil
 }
 
 // Migrate *sql.DB
-func (m *Migration) Migrate(_ *zap.Logger, db *sql.DB) (*migrate.Migrate, error) {
+func (m *Migration) Migrate(db *sql.DB) (*migrate.Migrate, error) {
 	driver, err := mysql.WithInstance(db, &mysql.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("dbMigrate WithInstance: %w", err)
@@ -116,53 +93,16 @@ func (m *Migration) Migrate(_ *zap.Logger, db *sql.DB) (*migrate.Migrate, error)
 	return mm, nil
 }
 
-// Check if database is empty with MySQL
-func isDatabaseEmpty(db *sql.DB, _ int) (bool, error) {
-	rows, err := db.Query("SHOW TABLES")
-	if err != nil {
-		return false, fmt.Errorf("isDatabaseEmpty: %w", err)
+func NewMigration(directory string) *Migration {
+	ctx := context.Background()
+	connector := tables.NewMultiDBConnector(container.AppNetworkName(), "zygote", utils.DomainName(), "mysql",
+		routerReadOnlyPort, routerReadWritePort, defaultNumShards)
+	_, err := connector.ConnectAllShardsRead(ctx)
+	logger.FatalIfErr("migration: connect all shards read", err)
+	_, err = connector.ConnectAllShardsWrite(ctx)
+	logger.FatalIfErr("migration: connect all shards write", err)
+	return &Migration{
+		Directory: directory,
+		Connector: connector,
 	}
-	defer rows.Close()
-	tables := make([]string, 0)
-	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
-			return false, fmt.Errorf("isDatabaseEmpty: %w", err)
-		}
-		tables = append(tables, table)
-	}
-	// check the only table availbale is schema_migrations
-	if len(tables) == 1 && tables[0] == "schema_migrations" {
-		return true, nil
-	}
-	return false, nil
-}
-
-// make *sql.DB based on connection string
-func connect(shard int) (*sql.DB, error) {
-	shardPort := 16446 + shard
-	shardHost := "localhost"
-	if envShardHost := os.Getenv(fmt.Sprintf("DB_SHARD_%d_INTERNAL_HOST", shard+1)); envShardHost != "" {
-		shardHost = envShardHost
-	}
-	if shardPortStr := os.Getenv(fmt.Sprintf("DB_SHARD_%d_INTERNAL_PORT", shard+1)); shardPortStr != "" {
-		var err error
-		shardPort, err = strconv.Atoi(shardPortStr)
-		if err != nil {
-			return nil, fmt.Errorf("dbMigrate strconv.Atoi: %w", err)
-		}
-	}
-	dbName, err := utils.RepoFullName()
-	if err != nil {
-		return nil, fmt.Errorf("dbMigrate RepoFullName: %w", err)
-	}
-	db, err := sql.Open(
-		"mysql",
-		fmt.Sprintf("admin:password@tcp(%[2]s:%[1]d)/%[3]s?multiStatements=true",
-			shardPort, shardHost, dbName),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("dbMigrate open: %w", err)
-	}
-	return db, nil
 }

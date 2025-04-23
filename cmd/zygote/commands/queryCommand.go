@@ -7,9 +7,18 @@ import (
 	"os"
 	"strings"
 
+	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/pkg/tables"
+	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/urfave/cli/v2"
 )
+
+const defaultTenant = "zygote"
+const defaultDatabaseName = "mysql"
+const routerReadWritePort = 6446
+const routerReadOnlyPort = 7447
+const defaultNumShards = 3
+const defaultShard = 0
 
 func Query() *cli.Command {
 	return &cli.Command{
@@ -23,15 +32,14 @@ func Query() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			// Initialize database configuration from flags
-			config := tables.NewClientConfig()
-
-			if c.String("database") != "" {
-				config.Database = c.String("database")
+			database := c.String("database")
+			if database == "" {
+				database = defaultDatabaseName
 			}
+			connector := tables.NewMultiDBConnector(container.AppNetworkName(), defaultTenant,
+				utils.DomainName(), database, routerReadOnlyPort, routerReadWritePort, defaultNumShards)
 
-			var connector tables.DatabaseConnector = config
-			db, err := connector.Connect()
+			db, err := connector.GetWriteConnection(defaultShard)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
 				os.Exit(1)
