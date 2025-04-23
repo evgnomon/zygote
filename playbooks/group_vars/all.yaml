@@ -9,20 +9,3 @@ z_backup_dir: /var/lib/{{ z_user }}
 z_certs_dir: "{{ z_backup_dir }}/certs"
 z_ca_dir: "{{ z_certs_dir }}/ca"
 z_keychain_dir: "{{ z_certs_dir }}/functions"
-
-z_os: >-
-  {{
-    {
-      'Darwin': 'darwin',
-      'Debian': 'linux',
-      'Windows': 'windows'
-    }[ansible_os_family] | default('')
-  }}
-z_arch: >-
-  {{
-    {
-      'x86_64': 'amd64',
-      'aarch64': 'arm64',
-      'i386': '386'
-    }[ansible_architecture] | default('')
-  }}

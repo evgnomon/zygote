@@ -1,7 +1,0 @@
----
-dependencies:
-  - role: evgnomon.catamaran.z_facts
-  - role: evgnomon.catamaran.z_defaults
-  - role: z_install
-    vars:
-      z_target: z

@@ -1,15 +1,36 @@
 ---
-- name: Push Play
+- name: Build
   hosts: localhost
   gather_facts: false
+  collections:
+    - evgnomon.catamaran
   roles:
     - z_build
+
+- name: Release on tag
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - evgnomon.catamaran
+  roles:
     - z_tag_release
+
+- name: Add shards to inventory
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - evgnomon.catamaran
+  roles:
     - z_add_shards
+  tags:
+    - z_deploy
+    - never
 
 - name: Deploy
   hosts: shards
   gather_facts: false
+  collections:
+    - evgnomon.catamaran
   roles:
     - role: z_join
     - role: z_service

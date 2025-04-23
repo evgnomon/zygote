@@ -1,4 +1,0 @@
----
-zygote_user: zygote
-func_cert_dir: "{{ zygote_home }}/certs/functions/{{ func_name }}"
-cert_file: "{{ func_cert_dir }}/{{ func_name }}_cert.pem"
