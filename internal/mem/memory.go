@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/evgnomon/zygote/internal/container"
-	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/utils"
 )
 
@@ -17,7 +16,7 @@ const hostNetworkName = "host"
 const redisImage = "redis:7.4.2"
 const defaultRedisPort = 6373
 
-var logger = util.NewLogger()
+var logger = utils.NewLogger()
 var defaultRedisPortStr = strconv.Itoa(defaultRedisPort)
 
 type MemNode struct {
@@ -74,7 +73,7 @@ func (m *MemNode) CreateReplica(ctx context.Context) {
 	}
 	err := config.StartContainer(ctx)
 	if err != nil {
-		logger.Fatal("Failed to start Redis container", util.M{"error": err})
+		logger.Fatal("Failed to start Redis container", utils.M{"error": err})
 		return
 	}
 }
@@ -116,7 +115,7 @@ func (m *MemNode) Init(ctx context.Context) {
 	if m.ReplicaIndex != 0 || m.ShardIndex != 0 {
 		return
 	}
-	logger.Debug("Creating Redis cluster", util.M{"replicaIndex": m.ReplicaIndex, "shardIndex": m.ShardIndex})
+	logger.Debug("Creating Redis cluster", utils.M{"replicaIndex": m.ReplicaIndex, "shardIndex": m.ShardIndex})
 	portMap := map[string]string{
 		defaultRedisPortStr: defaultRedisPortStr,
 	}
@@ -125,7 +124,7 @@ func (m *MemNode) Init(ctx context.Context) {
 	logger.FatalIfErr("Create client for container", err)
 
 	command := strings.Join(m.createRedisClusterCommand(), " ")
-	logger.Debug("Redis command", util.M{"command": command})
+	logger.Debug("Redis command", utils.M{"command": command})
 
 	// Configure backoff parameters
 	backoffConfig := utils.BackoffConfig{

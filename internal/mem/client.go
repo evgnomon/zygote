@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/evgnomon/zygote/internal/util"
+	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -99,5 +99,5 @@ func RunExample() {
 		log.Fatal("Failed to decompress JSON:", err)
 	}
 
-	logger.Info("Decompressed data", util.M{"originalData": originalData})
+	logger.Info("Decompressed data", utils.M{"originalData": originalData})
 }

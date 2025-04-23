@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/evgnomon/zygote/internal/container"
-	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/utils"
 )
 
@@ -36,7 +35,7 @@ const dbRouterShortName = "sql-router"
 const replicationRetrySleepTime = 5 * time.Second
 const numRetriesJoinGroupReplication = 5
 
-var logger = util.NewLogger()
+var logger = utils.NewLogger()
 
 type SQLNode struct {
 	Tenant       string
@@ -190,7 +189,7 @@ func (s *SQLNode) GroupReplicationHosts(shardIndex int) []string {
 }
 
 func (s *SQLNode) StartSQLContainers(ctx context.Context) error {
-	logger.Debug("Start SQL node containers", util.M{"sqlNode": s})
+	logger.Debug("Start SQL node containers", utils.M{"sqlNode": s})
 	err := s.MakeSQLReplica(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create SQL replica: %w", err)
@@ -198,7 +197,7 @@ func (s *SQLNode) StartSQLContainers(ctx context.Context) error {
 	err = s.MakeSQLRouter(ctx)
 	logger.FatalIfErr("failed to create SQL router", err)
 
-	logger.Debug("SQL node containers started", util.M{"sqlNode": s})
+	logger.Debug("SQL node containers started", utils.M{"sqlNode": s})
 	retries := numRetriesJoinGroupReplication
 	for retries > 0 {
 		retries--
@@ -626,7 +625,7 @@ func (s *SQLNode) connectionString(dbName string) string {
 }
 
 func (s *SQLNode) JoinGroupReplication() error {
-	logger.Debug("Joining group replication", util.M{"replicaIndex": s.RepIndex,
+	logger.Debug("Joining group replication", utils.M{"replicaIndex": s.RepIndex,
 		"shardIndex": s.ShardIndex, "domain": s.Domain, "tenant": s.Tenant})
 	var db *sql.DB
 	var err error
@@ -639,7 +638,7 @@ func (s *SQLNode) JoinGroupReplication() error {
 	// Connect to specific node
 	db, err = sql.Open(defaultConnDatabaseName, dsn)
 	if err != nil {
-		logger.Debug("Error connecting to database", util.M{
+		logger.Debug("Error connecting to database", utils.M{
 			"dsn":          dsn,
 			"replicaIndex": s.RepIndex,
 			"shardIndex":   s.ShardIndex,
@@ -672,7 +671,7 @@ func (s *SQLNode) JoinGroupReplication() error {
 	for _, query := range queries {
 		_, err := db.Exec(query)
 		if err != nil {
-			logger.Debug("Error executing query", util.M{
+			logger.Debug("Error executing query", utils.M{
 				"query":        query,
 				"error":        err,
 				"replicaIndex": s.RepIndex,
@@ -701,7 +700,7 @@ func (s *SQLNode) JoinGroupReplication() error {
 		for _, query := range secondaryQueries {
 			_, err := db.Exec(query)
 			if err != nil {
-				logger.Debug("Error executing secondary query", util.M{
+				logger.Debug("Error executing secondary query", utils.M{
 					"query":        query,
 					"error":        err,
 					"replicaIndex": s.RepIndex,
@@ -720,7 +719,7 @@ func (s *SQLNode) JoinGroupReplication() error {
 	for _, query := range finalQueries {
 		_, err := db.Exec(query)
 		if err != nil {
-			logger.Debug("Error executing final query", util.M{
+			logger.Debug("Error executing final query", utils.M{
 				"query":        query,
 				"error":        err,
 				"replicaIndex": s.RepIndex,
@@ -745,7 +744,7 @@ func (s *SQLNode) JoinGroupReplication() error {
 		if err != nil {
 			return fmt.Errorf("error scanning replication status on replica index %d: %v", s.RepIndex, err)
 		}
-		logger.Info("Replica added", util.M{
+		logger.Info("Replica added", utils.M{
 			"memberHost":  memberHost,
 			"memberPort":  memberPort,
 			"memberRole":  memberRole,

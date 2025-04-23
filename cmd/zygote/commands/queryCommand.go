@@ -15,9 +15,6 @@ import (
 
 const defaultTenant = "zygote"
 const defaultDatabaseName = "mysql"
-const routerReadWritePort = 6446
-const routerReadOnlyPort = 7447
-const defaultNumShards = 3
 const defaultShard = 0
 
 func Query() *cli.Command {

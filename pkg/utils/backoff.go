@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math"
 	"time"
-
-	"github.com/evgnomon/zygote/internal/util"
 )
 
 // BackoffConfig defines the configuration for exponential backoff
@@ -25,7 +23,7 @@ func (config BackoffConfig) Retry(ctx context.Context, fn func() error) error {
 		}
 
 		// Log the error for this attempt
-		logger.Debug("Backoff attempt failed", util.M{
+		logger.Debug("Backoff attempt failed", M{
 			"attempt": attempt + 1,
 			"error":   err.Error(),
 		})

@@ -3,10 +3,10 @@ package main
 import (
 	"github.com/evgnomon/zygote/internal/controller"
 	"github.com/evgnomon/zygote/internal/server"
-	"github.com/evgnomon/zygote/internal/util"
+	"github.com/evgnomon/zygote/pkg/utils"
 )
 
-var logger = util.NewLogger()
+var logger = utils.NewLogger()
 
 func main() {
 	logger.Info("Starting Zygote API server...")

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
-	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/go-sql-driver/mysql"
 	"github.com/labstack/echo/v4"
@@ -20,7 +19,7 @@ import (
 
 const defaultReplica = 0
 
-var logger = util.NewLogger()
+var logger = utils.NewLogger()
 
 // ClientConfig holds database connection configuration
 type ClientConfig struct {
@@ -237,7 +236,7 @@ func (m *MultiDBConnector) ConnectAllShardsRead(ctx context.Context) (map[int]*s
 	var connectErrors []error
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	logger.Debug("Connecting to shards for read", util.M{"endpoints": endpoints})
+	logger.Debug("Connecting to shards for read", utils.M{"endpoints": endpoints})
 
 	for _, endpoint := range endpoints {
 		wg.Add(1)
@@ -369,7 +368,7 @@ func (m *MultiDBConnector) Close(shardIndex int) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	logger.Debug("Closing connections", util.M{"shardIndex": shardIndex})
+	logger.Debug("Closing connections", utils.M{"shardIndex": shardIndex})
 
 	var errs []error
 
@@ -495,7 +494,7 @@ func (m *MultiDBConnector) GenericQueryHandler(ctx context.Context, shardIndex i
 	return m.RetryReadOperation(ctx, shardIndex, func(db *sql.DB) error {
 		rows, err := db.QueryContext(c.Request().Context(), query)
 		if err != nil {
-			logger.Debug("Failed to execute query", util.WrapError(err))
+			logger.Debug("Failed to execute query", utils.WrapError(err))
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "Failed to execute query: " + err.Error(),
 			})
@@ -505,7 +504,7 @@ func (m *MultiDBConnector) GenericQueryHandler(ctx context.Context, shardIndex i
 		// Get the slice type for results
 		sliceType := reflect.TypeOf(resultStruct)
 		if sliceType.Kind() != reflect.Slice {
-			logger.Debug("Failed to execute query", util.WrapError(err))
+			logger.Debug("Failed to execute query", utils.WrapError(err))
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "Result struct must be a slice",
 			})

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/evgnomon/zygote/internal/container"
-	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/tables"
 	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/labstack/echo/v4"
@@ -18,7 +17,7 @@ const routerReadPort = 6446
 const routerWritePort = 6447
 const defaultNumShards = 3
 
-var logger = util.NewLogger()
+var logger = utils.NewLogger()
 
 type SQLQueryRequest struct {
 	Query string `json:"query" form:"query"`

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/evgnomon/zygote/internal/container"
-	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/tables"
 	"github.com/evgnomon/zygote/pkg/utils"
 	migrate "github.com/golang-migrate/migrate/v4"
@@ -17,7 +16,7 @@ const routerReadWritePort = 6446
 const routerReadOnlyPort = 6447
 const defaultNumShards = 3
 
-var logger = util.NewLogger()
+var logger = utils.NewLogger()
 
 type Migration struct {
 	Directory string

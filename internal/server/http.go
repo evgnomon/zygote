@@ -12,13 +12,12 @@ import (
 
 	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/evgnomon/zygote/internal/controller"
-	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/acme/autocert"
 )
 
-var logger = util.NewLogger()
+var logger = utils.NewLogger()
 
 type Server struct {
 	e       *echo.Echo
@@ -128,7 +127,7 @@ func (s *Server) Listen() error {
 	}
 
 	// Start the server
-	logger.Info("Starting serverd", util.M{"port": s.port, "domain": s.domain})
+	logger.Info("Starting serverd", utils.M{"port": s.port, "domain": s.domain})
 	if s.useACME {
 		err = httpServer.ListenAndServeTLS("", "")
 	} else {

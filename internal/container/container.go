@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/user"
 	"runtime"
@@ -21,7 +20,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
-	"github.com/evgnomon/zygote/internal/util"
+	"github.com/evgnomon/zygote/pkg/utils"
 )
 
 const (
@@ -32,7 +31,7 @@ const (
 	networkNameEnvVar            = "DOCKER_NETWORK_NAME"
 )
 
-var logger = util.NewLogger()
+var logger = utils.NewLogger()
 
 func AppNetworkName() string {
 	if os.Getenv(networkNameEnvVar) != "" {
@@ -52,7 +51,7 @@ func CreateClinet() (*client.Client, error) {
 		homePath := os.Getenv("HOME")
 		dockerPath = fmt.Sprintf("unix://%s/.docker/run/docker.sock", homePath)
 	default:
-		logger.Fatal("Unsupported OS", util.M{"os": runtime.GOOS})
+		logger.Fatal("Unsupported OS", utils.M{"os": runtime.GOOS})
 	}
 	cli, err := client.NewClientWithOpts(client.WithVersion(dockerVersion), client.WithHost(dockerPath))
 	if err != nil {
@@ -88,7 +87,7 @@ func Spawn(ctx context.Context,
 		hostConfig.NetworkMode = containertypes.NetworkMode(networkName)
 	}
 	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, "")
-	logger.FatalIfErr("Create container", err, util.M{"containerName": image})
+	logger.FatalIfErr("Create container", err, utils.M{"containerName": image})
 
 	// Attach to STDOUT before starting
 	attachOptions := containertypes.AttachOptions{
@@ -98,15 +97,15 @@ func Spawn(ctx context.Context,
 	}
 
 	attachResponse, err := cli.ContainerAttach(ctx, resp.ID, attachOptions)
-	logger.FatalIfErr("Attach to container", err, util.M{"containerID": resp.ID})
+	logger.FatalIfErr("Attach to container", err, utils.M{"containerID": resp.ID})
 
 	defer attachResponse.Close()
 
 	err = cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{})
-	logger.FatalIfErr("Start container", err, util.M{"containerID": resp.ID})
+	logger.FatalIfErr("Start container", err, utils.M{"containerID": resp.ID})
 
 	_, err = io.Copy(os.Stdout, attachResponse.Reader)
-	logger.FatalIfErr("Copy output", err, util.M{"containerID": resp.ID})
+	logger.FatalIfErr("Copy output", err, utils.M{"containerID": resp.ID})
 }
 
 func SpawnAndWait(ctx context.Context,
@@ -136,7 +135,7 @@ func SpawnAndWait(ctx context.Context,
 	}
 
 	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, fmt.Sprintf("%s-%d", tenant, time.Now().UnixNano()))
-	logger.FatalIfErr("Create container", err, util.M{"containerName": imageName})
+	logger.FatalIfErr("Create container", err, utils.M{"containerName": imageName})
 
 	attachOptions := containertypes.AttachOptions{
 		Stream: true,
@@ -144,13 +143,13 @@ func SpawnAndWait(ctx context.Context,
 		Stderr: true,
 	}
 	attachResponse, err := cli.ContainerAttach(ctx, resp.ID, attachOptions)
-	logger.FatalIfErr("Attach to container", err, util.M{"containerID": resp.ID})
+	logger.FatalIfErr("Attach to container", err, utils.M{"containerID": resp.ID})
 	defer attachResponse.Close()
 
 	Pull(ctx, imageName)
 
 	err = cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{})
-	logger.FatalIfErr("Start container", err, util.M{"containerID": resp.ID})
+	logger.FatalIfErr("Start container", err, utils.M{"containerID": resp.ID})
 
 	// Stream output to stdout
 	go func() {
@@ -159,7 +158,7 @@ func SpawnAndWait(ctx context.Context,
 			fmt.Fprintf(os.Stderr, "error copying output: %v\n", err)
 		}
 		if len(data) != 0 {
-			logger.Debug("Container output", util.M{"message": data})
+			logger.Debug("Container output", utils.M{"message": data})
 		}
 	}()
 
@@ -167,10 +166,10 @@ func SpawnAndWait(ctx context.Context,
 	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, containertypes.WaitConditionNotRunning)
 	select {
 	case err := <-errCh:
-		logger.FatalIfErr("Wait for container", err, util.M{"containerID": resp.ID})
+		logger.FatalIfErr("Wait for container", err, utils.M{"containerID": resp.ID})
 	case status := <-statusCh:
 		if status.StatusCode != 0 {
-			logger.Debug("Container exited with non-zero status", util.M{"image": imageName, "cmd": cmd})
+			logger.Debug("Container exited with non-zero status", utils.M{"image": imageName, "cmd": cmd})
 			return fmt.Errorf("container exited with non-zero status: %d", status.StatusCode)
 		}
 	}
@@ -194,7 +193,7 @@ func SpawnWithInput(
 		_, err := cli.VolumeInspect(ctx, volumeName)
 		if err != nil {
 			_, err := cli.VolumeCreate(ctx, volume.CreateOptions{Name: volumeName})
-			logger.FatalIfErr("Create volume", err, util.M{"volumeName": volumeName})
+			logger.FatalIfErr("Create volume", err, utils.M{"volumeName": volumeName})
 		}
 		bind := volumeName + ":" + mountPath
 		binds = append(binds, bind)
@@ -204,7 +203,7 @@ func SpawnWithInput(
 	if err != nil {
 		_, err = cli.NetworkCreate(ctx, networkName, networktypes.CreateOptions{})
 	}
-	logger.FatalIfErr("Create network", err, util.M{"networkName": networkName})
+	logger.FatalIfErr("Create network", err, utils.M{"networkName": networkName})
 
 	config := &containertypes.Config{
 		Image:        name,
@@ -234,7 +233,7 @@ func SpawnWithInput(
 	}
 
 	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, fmt.Sprintf("%s-%d", tenant, time.Now().UnixNano()))
-	logger.FatalIfErr("Create container", err, util.M{"containerName": name})
+	logger.FatalIfErr("Create container", err, utils.M{"containerName": name})
 
 	// Attach to STDIN, STDOUT, and STDERR before starting
 	attachOptions := containertypes.AttachOptions{
@@ -245,7 +244,7 @@ func SpawnWithInput(
 	}
 
 	attachResponse, err := cli.ContainerAttach(ctx, resp.ID, attachOptions)
-	logger.FatalIfErr("Attach to container", err, util.M{"containerID": resp.ID})
+	logger.FatalIfErr("Attach to container", err, utils.M{"containerID": resp.ID})
 
 	defer attachResponse.Close()
 
@@ -257,9 +256,9 @@ func SpawnWithInput(
 			// Write your input string to the container's STDIN
 			inputWithNewline := inputStr + "\n"
 			n, err := attachResponse.Conn.Write([]byte(inputWithNewline))
-			logger.FatalIfErr("Write to container's STDIN", err, util.M{"input": inputWithNewline, "name": name})
+			logger.FatalIfErr("Write to container's STDIN", err, utils.M{"input": inputWithNewline, "name": name})
 			if n != len(inputWithNewline) {
-				logger.Fatal("Failed to write to container's STDIN", util.M{"expected": len(inputWithNewline), "actual": n})
+				logger.Fatal("Failed to write to container's STDIN", utils.M{"expected": len(inputWithNewline), "actual": n})
 			}
 			time.Sleep(1 * time.Second)
 			attachResponse.Close()
@@ -269,11 +268,11 @@ func SpawnWithInput(
 	}
 
 	err = cli.ContainerStart(ctx, resp.ID, containertypes.StartOptions{})
-	logger.FatalIfErr("Start container", err, util.M{"containerID": resp.ID})
+	logger.FatalIfErr("Start container", err, utils.M{"containerID": resp.ID})
 	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, containertypes.WaitConditionNotRunning)
 	select {
 	case err := <-errCh:
-		logger.FatalIfErr("Wait for container", err, util.M{"containerID": resp.ID})
+		logger.FatalIfErr("Wait for container", err, utils.M{"containerID": resp.ID})
 
 	case <-statusCh:
 		// Container has stopped
@@ -370,10 +369,10 @@ func RemoveContainer(containerID string) {
 	}
 
 	err = cli.ContainerStop(ctx, containerID, containertypes.StopOptions{Signal: "SIGTERM"})
-	logger.FatalIfErr("Stop container", err, util.M{"containerID": containerID})
+	logger.FatalIfErr("Stop container", err, utils.M{"containerID": containerID})
 
 	if err := cli.ContainerRemove(ctx, containerID, removeOptions); err != nil {
-		logger.FatalIfErr("Remove container", err, util.M{"containerID": containerID})
+		logger.FatalIfErr("Remove container", err, utils.M{"containerID": containerID})
 	}
 }
 
@@ -382,12 +381,12 @@ func RemoveVolumePrefix(volumePrefix string) {
 	logger.FatalIfErr("Create Docker client", err)
 
 	volumes, err := cli.VolumeList(context.Background(), volume.ListOptions{})
-	logger.FatalIfErr("List volumes", err, util.M{"volumePrefix": volumePrefix})
+	logger.FatalIfErr("List volumes", err, utils.M{"volumePrefix": volumePrefix})
 
 	for _, volume := range volumes.Volumes {
 		if strings.HasPrefix(volume.Name, volumePrefix) {
 			err := cli.VolumeRemove(context.Background(), volume.Name, false)
-			logger.FatalIfErr("Remove volume", err, util.M{"volumeName": volume.Name})
+			logger.FatalIfErr("Remove volume", err, utils.M{"volumeName": volume.Name})
 		}
 	}
 }
@@ -480,9 +479,7 @@ func Pull(ctx context.Context, image string) {
 		image += ":latest"
 	}
 	cli, err := CreateClinet()
-	if err != nil {
-		log.Fatal(err)
-	}
+	logger.FatalIfErr("Create Docker client", err)
 
 	images, err := cli.ImageList(ctx, imagetypes.ListOptions{})
 	logger.FatalIfErr("List images", err)
@@ -504,15 +501,15 @@ func Pull(ctx context.Context, image string) {
 	}
 
 	reader, err := cli.ImagePull(ctx, imgFullName, imagetypes.PullOptions{RegistryAuth: authStr})
-	logger.FatalIfErr("Image pull", err, util.M{"image": image})
-	logger.Debug("Pulling image", util.M{"image": image})
+	logger.FatalIfErr("Image pull", err, utils.M{"image": image})
+	logger.Debug("Pulling image", utils.M{"image": image})
 	_, err = io.ReadAll(reader)
 	if err != nil {
-		logger.Fatal("Image pull failed", util.M{"error": err})
+		logger.Fatal("Image pull failed", utils.M{"error": err})
 	}
 
 	err = reader.Close()
-	logger.Warning("Close reader", util.M{"image": image, "error": err})
+	logger.Warning("Close reader", utils.M{"image": image, "error": err})
 }
 
 type NetworkConfig struct {
@@ -527,12 +524,12 @@ func NewNetworkConfig(imageName string) *NetworkConfig {
 
 func (n *NetworkConfig) Ensure(ctx context.Context) {
 	cli, err := CreateClinet()
-	logger.FatalIfErr("Create Docker client", err, util.M{"networkName": n.Name})
+	logger.FatalIfErr("Create Docker client", err, utils.M{"networkName": n.Name})
 	if n.Name != HostNetworkName {
 		_, err := cli.NetworkInspect(ctx, n.Name, networktypes.InspectOptions{})
 		if err != nil {
 			_, err = cli.NetworkCreate(ctx, n.Name, networktypes.CreateOptions{})
-			logger.FatalIfErr("Create network", err, util.M{"networkName": n.Name})
+			logger.FatalIfErr("Create network", err, utils.M{"networkName": n.Name})
 		}
 	}
 }
@@ -608,7 +605,7 @@ func (c *ContainerConfig) StartContainer(ctx context.Context) error {
 	resp, err := cli.ContainerCreate(ctx, config, hostConfig, nil, nil, c.Name)
 	if err != nil {
 		if errdefs.IsConflict(err) {
-			logger.Warning("Container already exists: %s", util.M{"containerName": c.Name})
+			logger.Warning("Container already exists: %s", utils.M{"containerName": c.Name})
 			return nil
 		}
 		return fmt.Errorf("failed to create container: %w", err)

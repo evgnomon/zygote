@@ -13,11 +13,10 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/evgnomon/zygote/internal/util"
 	toml "github.com/pelletier/go-toml/v2"
 )
 
-var logger = util.NewLogger()
+var logger = NewLogger()
 
 //go:embed scripts/vault_pass
 var vaultPassScript string
@@ -134,7 +133,7 @@ func PathExists(path string) bool {
 		if os.IsNotExist(err) {
 			return false
 		}
-		logger.FatalIfErr("Checking path", err, util.M{"path": path})
+		logger.FatalIfErr("Checking path", err, M{"path": path})
 	}
 	return true
 }
