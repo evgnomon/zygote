@@ -7,6 +7,7 @@ import (
 
 const hostNetworkName = "host"
 const maxShardSize = 9
+const myZygoteDomain = "my.zygote.run"
 
 func NodePort(network string, targetPort, replicaIndex, shardIndex int) int {
 	if network == hostNetworkName {
@@ -66,4 +67,28 @@ func RemoteHost(network, domain string, replicaIndex, shardIndex int) string {
 	} else {
 		return fmt.Sprintf("shard-%s.%s", shardName, domain)
 	}
+}
+
+func DomainName() string {
+	domain := os.Getenv("Z_DOMAIN")
+	if domain == "" {
+		domain = myZygoteDomain
+	}
+	return domain
+}
+
+func HostName() string {
+	domain := os.Getenv("Z_HOST")
+	if domain == "" {
+		domain = myZygoteDomain
+	}
+	return domain
+}
+
+func TenantName() string {
+	domain := os.Getenv("Z_TENANT")
+	if domain == "" {
+		domain = "zygote"
+	}
+	return domain
 }

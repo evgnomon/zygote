@@ -10,6 +10,7 @@ import (
 	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/internal/util"
 	"github.com/evgnomon/zygote/pkg/tables"
+	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/labstack/echo/v4"
 )
 
@@ -30,7 +31,7 @@ type SQLQueryController struct {
 func NewSQLQueryController() (*SQLQueryController, error) {
 	// Initialize database configuration
 	ctx := context.Background()
-	connector := tables.NewMultiDBConnector(container.AppNetworkName(), "zygote", "my.zygote.run", "mysql",
+	connector := tables.NewMultiDBConnector(container.AppNetworkName(), "zygote", utils.DomainName(), "mysql",
 		routerReadPort, routerWritePort, defaultNumShards)
 	_, err := connector.ConnectAllShardsRead(ctx)
 	if err != nil {

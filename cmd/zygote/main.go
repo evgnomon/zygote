@@ -248,9 +248,9 @@ func initCommand() *cli.Command {
 			for shardIndex := 0; shardIndex < defaultNumShards; shardIndex++ {
 				for repIndex := 0; repIndex < defaultShardSize; repIndex++ {
 					sn := db.NewSQLNode()
-					sn.Domain = "my.zygote.run"
-					sn.DatabaseName = "zygote"
-					sn.Tenant = "zygote"
+					sn.Domain = utils.DomainName()
+					sn.DatabaseName = utils.TenantName()
+					sn.Tenant = utils.TenantName()
 					sn.ShardIndex = shardIndex
 					sn.RepIndex = repIndex
 					sn.NumShards = defaultNumShards
@@ -329,7 +329,7 @@ func joinCommand() *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			ctx := context.Background()
-			var sn db.SQLNode
+			var sn = db.NewSQLNode()
 			sn.Domain = c.String("domain")
 			sn.NetworkName = container.HostNetworkName
 			sn.DatabaseName = c.String("db")
@@ -339,10 +339,12 @@ func joinCommand() *cli.Command {
 			}
 			sn.ShardIndex = h.ShardIndex
 			sn.RepIndex = h.RepIndex
+			sn.Tenant = utils.TenantName()
+			sn.RootPassword = "root1234"
 			sn.NumShards = c.Int("num-shards")
 			sn.ShardSize = c.Int("shard-size")
 
-			createNode(ctx, &sn)
+			createNode(ctx, sn)
 			return nil
 		},
 	}
@@ -392,12 +394,12 @@ func deinitCommand() *cli.Command {
 		},
 		Action: func(c *cli.Context) error {
 			for _, v := range container.List() {
-				if strings.HasPrefix(v.Name, "/zygote-") {
+				if strings.HasPrefix(v.Name, fmt.Sprintf("/%s-", utils.TenantName())) {
 					container.RemoveContainer(v.ID)
 				}
 			}
 			if c.Bool("remove-volume") {
-				container.RemoveVolumePrefix("zygote-")
+				container.RemoveVolumePrefix(fmt.Sprintf("%s-", utils.TenantName()))
 			}
 			return nil
 		},

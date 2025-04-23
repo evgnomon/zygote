@@ -95,7 +95,7 @@ func (m *Migration) Migrate(db *sql.DB) (*migrate.Migrate, error) {
 
 func NewMigration(directory string) *Migration {
 	ctx := context.Background()
-	connector := tables.NewMultiDBConnector(container.AppNetworkName(), "zygote", "my.zygote.run", "mysql",
+	connector := tables.NewMultiDBConnector(container.AppNetworkName(), "zygote", utils.DomainName(), "mysql",
 		routerReadOnlyPort, routerReadWritePort, defaultNumShards)
 	_, err := connector.ConnectAllShardsRead(ctx)
 	logger.FatalIfErr("migration: connect all shards read", err)

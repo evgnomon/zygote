@@ -9,11 +9,11 @@ import (
 
 	"github.com/evgnomon/zygote/internal/container"
 	"github.com/evgnomon/zygote/pkg/tables"
+	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/urfave/cli/v2"
 )
 
 const defaultTenant = "zygote"
-const myZygoteDomain = "my.zygote.run"
 const defaultDatabaseName = "mysql"
 const routerReadWritePort = 6446
 const routerReadOnlyPort = 7447
@@ -37,7 +37,7 @@ func Query() *cli.Command {
 				database = defaultDatabaseName
 			}
 			connector := tables.NewMultiDBConnector(container.AppNetworkName(), defaultTenant,
-				myZygoteDomain, database, routerReadOnlyPort, routerReadWritePort, defaultNumShards)
+				utils.DomainName(), database, routerReadOnlyPort, routerReadWritePort, defaultNumShards)
 
 			db, err := connector.GetWriteConnection(defaultShard)
 			if err != nil {

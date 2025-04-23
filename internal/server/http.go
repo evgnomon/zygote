@@ -13,6 +13,7 @@ import (
 	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/evgnomon/zygote/internal/controller"
 	"github.com/evgnomon/zygote/internal/util"
+	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/acme/autocert"
 )
@@ -36,10 +37,7 @@ func NewServer() (*Server, error) {
 		return nil, fmt.Errorf("failed to create cert service: %w", err)
 	}
 	s.cs = cs
-	s.domain = "myservice.zygote.run"
-	if os.Getenv("ZCORE_DOMAIN") != "" {
-		s.domain = os.Getenv("ZCORE_DOMAIN")
-	}
+	s.domain = utils.HostName()
 
 	// Configure certificate handling based on ACME flag
 	s.useACME = strings.ToLower(os.Getenv("ACME")) == "true"

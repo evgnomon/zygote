@@ -649,7 +649,11 @@ func (s *SQLNode) JoinGroupReplication() error {
 
 	// Common setup queries for all nodes
 	queries := []string{
-		"INSTALL PLUGIN group_replication SONAME 'group_replication.so'",
+		"SET @plugin_status = (SELECT COUNT(*) FROM INFORMATION_SCHEMA.PLUGINS WHERE PLUGIN_NAME = 'group_replication' AND PLUGIN_STATUS = 'ACTIVE');", //nolint:lll
+		`SET @sql = IF(@plugin_status = 0, 'INSTALL PLUGIN group_replication SONAME \'group_replication.so\'', 'SELECT "Plugin already installed"');`,  //nolint:lll
+		"PREPARE stmt FROM @sql;",
+		"EXECUTE stmt;",
+		"DEALLOCATE PREPARE stmt;",
 		fmt.Sprintf("SET GLOBAL group_replication_group_name = '%s'", s.GroupName),
 		fmt.Sprintf("SET GLOBAL group_replication_local_address = '%s:%d'",
 			s.GroupReplicationHosts(s.ShardIndex)[s.RepIndex], groupRepDefaultPort),
