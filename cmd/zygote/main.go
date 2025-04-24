@@ -7,7 +7,7 @@ package main
 import (
 	"os"
 
-	"github.com/evgnomon/zygote/cmd/zygote/commands"
+	"github.com/evgnomon/zygote/internal/commands"
 	"github.com/evgnomon/zygote/pkg/utils"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	cli "github.com/urfave/cli/v2"
@@ -27,24 +27,24 @@ func main() {
 			return cc.Action(nil)
 		},
 		Commands: []*cli.Command{
-			commands.VaultCommand(),
 			commands.BlueprintCommand(),
 			commands.BuildCommand(),
-			commands.CheckCommand(),
-			commands.MigrateCommand(),
-			commands.InitCommand(),
-			commands.DeinitCommand(),
-			commands.CertCommand(),
+			commands.CCommand(),
 			commands.CallCommand(),
-			commands.QCommand(),
-			commands.OpenDiffs(),
-			commands.OpenActions(),
-			commands.SQLCommand(),
+			commands.CertCommand(),
+			commands.CheckCommand(),
+			commands.DeinitCommand(),
 			commands.GenerateCommand(),
-			commands.SmokerCommand(),
+			commands.InitCommand(),
 			commands.JoinCommand(),
 			commands.MemCommand(),
-			commands.CCommand(),
+			commands.MigrateCommand(),
+			commands.OpenActions(),
+			commands.OpenDiffs(),
+			commands.QCommand(),
+			commands.SQLCommand(),
+			commands.SmokerCommand(),
+			commands.VaultCommand(),
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
