@@ -3,7 +3,7 @@ module github.com/evgnomon/zygote
 go 1.24.0
 
 require (
-	github.com/docker/docker v28.0.4+incompatible
+	github.com/docker/docker v28.1.1+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/go-sql-driver/mysql v1.9.0
@@ -20,6 +20,8 @@ require (
 	golang.org/x/crypto v0.36.0
 	golang.org/x/term v0.30.0
 )
+
+require github.com/moby/sys/atomicwriter v0.1.0 // indirect
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
