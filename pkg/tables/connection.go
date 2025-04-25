@@ -5,16 +5,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff"
+	"github.com/evgnomon/zygote/pkg/http"
 	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/go-sql-driver/mysql"
-	"github.com/labstack/echo/v4"
 )
 
 const defaultReplica = 0
@@ -490,24 +489,18 @@ func (m *MultiDBConnector) RetryWriteOperation(ctx context.Context, shardIndex i
 }
 
 // GenericQueryHandler handles SQL queries with a provided query and struct type
-func (m *MultiDBConnector) GenericQueryHandler(ctx context.Context, shardIndex int, query string, resultStruct any, c echo.Context) error {
+func (m *MultiDBConnector) GenericQueryHandler(ctx context.Context, shardIndex int, query string, resultStruct any, c http.Context) error {
 	return m.RetryReadOperation(ctx, shardIndex, func(db *sql.DB) error {
-		rows, err := db.QueryContext(c.Request().Context(), query)
+		rows, err := db.QueryContext(c.GetRequestContext(), query)
 		if err != nil {
-			logger.Debug("Failed to execute query", utils.WrapError(err))
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "Failed to execute query: " + err.Error(),
-			})
+			return c.SendInternalError("Failed to execute query: ", err)
 		}
 		defer rows.Close()
 
 		// Get the slice type for results
 		sliceType := reflect.TypeOf(resultStruct)
 		if sliceType.Kind() != reflect.Slice {
-			logger.Debug("Failed to execute query", utils.WrapError(err))
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "Result struct must be a slice",
-			})
+			return c.SendInternalError("Result struct must be a slice", err)
 		}
 
 		// Create a slice to hold results
@@ -527,9 +520,7 @@ func (m *MultiDBConnector) GenericQueryHandler(ctx context.Context, shardIndex i
 
 			// Scan row into struct fields
 			if err := rows.Scan(fields...); err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{
-					"error": "Failed to scan results: " + err.Error(),
-				})
+				return c.SendInternalError("Failed to scan results", err)
 			}
 
 			// Append to results slice
@@ -538,13 +529,10 @@ func (m *MultiDBConnector) GenericQueryHandler(ctx context.Context, shardIndex i
 
 		// Check for errors during iteration
 		if err = rows.Err(); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "Error reading results: " + err.Error(),
-			})
+			return c.SendInternalError("Error reading results", err)
 		}
 
-		// Return successful response
-		return c.JSON(http.StatusOK, map[string]any{
+		return c.Send(map[string]any{
 			"results": results.Interface(),
 		})
 	})

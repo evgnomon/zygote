@@ -3,13 +3,12 @@ package controller
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/evgnomon/zygote/pkg/http"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -92,18 +91,14 @@ func (rc *RedisQueryController) ensureConnection() error {
 	return nil
 }
 
-func (rc *RedisQueryController) QueryHandler(c echo.Context) error {
+func (rc *RedisQueryController) QueryHandler(c http.Context) error {
 	if err := rc.ensureConnection(); err != nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
-			"error": "Redis connection failed: " + err.Error(),
-		})
+		return c.SendInternalError("Redis connection failed: ", err)
 	}
 
 	var req RedisQueryRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Invalid request format",
-		})
+	if err := c.BindBody(&req); err != nil {
+		return err
 	}
 
 	// Prepare command arguments for Redis
@@ -123,23 +118,17 @@ func (rc *RedisQueryController) QueryHandler(c echo.Context) error {
 		if err != nil {
 			if strings.Contains(err.Error(), "connection") {
 				if reconnErr := rc.ensureConnection(); reconnErr != nil {
-					return c.JSON(http.StatusServiceUnavailable, map[string]string{
-						"error": "Failed to reconnect to Redis: " + reconnErr.Error(),
-					})
+					return c.SendInternalError("Failed to reconnect to Redis: ", reconnErr)
 				}
 				continue
 			}
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": fmt.Sprintf("Command execution failed: %v", err),
-			})
+			return c.SendInternalError("Command execution failed", err)
 		}
 		break
 	}
 
 	if err != nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
-			"error": "Failed to execute command after multiple attempts",
-		})
+		return c.SendInternalError("Command execution failed", err)
 	}
 
 	// Format response based on result type
@@ -163,15 +152,13 @@ func (rc *RedisQueryController) QueryHandler(c echo.Context) error {
 		response = map[string]any{"result": v}
 	}
 
-	return c.JSON(http.StatusOK, response)
+	return c.Send(response)
 }
 
 // Add this new method to RedisQueryController
-func (rc *RedisQueryController) ClusterNodesHandler(c echo.Context) error {
+func (rc *RedisQueryController) ClusterNodesHandler(c http.Context) error {
 	if err := rc.ensureConnection(); err != nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{
-			"error": "Redis connection failed: " + err.Error(),
-		})
+		return c.SendInternalError("Redis connection failed: ", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), redisTimeout)
@@ -180,9 +167,7 @@ func (rc *RedisQueryController) ClusterNodesHandler(c echo.Context) error {
 	// Get cluster nodes information
 	nodes, err := rc.client.ClusterNodes(ctx).Result()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "Failed to get cluster nodes: " + err.Error(),
-		})
+		return c.SendInternalError("Failed to get cluster nodes", err)
 	}
 
 	// Parse the nodes string into a more structured JSON response
@@ -238,7 +223,7 @@ func (rc *RedisQueryController) ClusterNodesHandler(c echo.Context) error {
 		clusterNodes = append(clusterNodes, node)
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{
+	return c.Send(map[string]any{
 		"nodes": clusterNodes,
 		"count": len(clusterNodes),
 	})
@@ -254,14 +239,14 @@ func parseInt(s string) int64 {
 }
 
 // Modify the AddEndpoint method to include the new endpoint
-func (rc *RedisQueryController) AddEndpoint(prefix string, e *echo.Echo) error {
-	e.Pre(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			defer rc.Close()
-			return next(c)
-		}
-	})
-	e.POST(fmt.Sprintf("%s/mem/query", prefix), rc.QueryHandler)
-	e.GET(fmt.Sprintf("%s/mem/cluster/node", prefix), rc.ClusterNodesHandler) // New endpoint
+func (rc *RedisQueryController) AddEndpoint(prefix string, e http.Router) error {
+	err := e.Add(http.POST, fmt.Sprintf("%s/mem/query", prefix), rc.QueryHandler)
+	if err != nil {
+		return err
+	}
+	err = e.Add(http.GET, fmt.Sprintf("%s/mem/cluster/node", prefix), rc.ClusterNodesHandler) // New endpoint
+	if err != nil {
+		return err
+	}
 	return nil
 }

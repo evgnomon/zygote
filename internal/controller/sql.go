@@ -4,13 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/evgnomon/zygote/internal/container"
+	"github.com/evgnomon/zygote/pkg/http"
 	"github.com/evgnomon/zygote/pkg/tables"
 	"github.com/evgnomon/zygote/pkg/utils"
-	"github.com/labstack/echo/v4"
 )
 
 const routerReadPort = 6446
@@ -53,42 +52,34 @@ func (dc *SQLQueryController) Close() error {
 }
 
 // QueryHandler handles SQL query requests
-func (dc *SQLQueryController) QueryHandler(c echo.Context) error {
-	// Parse request
+func (dc *SQLQueryController) QueryHandler(c http.Context) error {
 	var req SQLQueryRequest
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Invalid request format",
-		})
+	err := c.BindBody(&req)
+	if err != nil {
+		return err
 	}
 
 	query := strings.TrimSpace(req.Query)
 	if query == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Query cannot be empty",
-		})
+		// return c.SendJSONError(nethttp.StatusBadRequest, map[string]string{
+		return c.SendError("Query cannot be empty")
 	}
 
 	// Execute query with retry on connection loss
-	return dc.connector.RetryReadOperation(c.Request().Context(), 0, func(db *sql.DB) error {
-		rows, err := db.QueryContext(c.Request().Context(), query)
+	return dc.connector.RetryReadOperation(c.GetRequestContext(), 0, func(db *sql.DB) error {
+		rows, err := db.QueryContext(c.GetRequestContext(), query)
 		if err != nil {
 			return err
 		}
-
 		if rows == nil {
-			return c.JSON(http.StatusServiceUnavailable, map[string]string{
-				"error": "Failed to execute query after multiple attempts",
-			})
+			return c.SendInternalError("Query returned no rows after multiple attempts", err)
 		}
 		defer rows.Close()
 
 		// Get column names
 		columns, err := rows.Columns()
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "Failed to get columns: " + err.Error(),
-			})
+			return c.SendInternalError("Failed to get columns: ", err)
 		}
 
 		// Process results
@@ -101,9 +92,7 @@ func (dc *SQLQueryController) QueryHandler(c echo.Context) error {
 			}
 
 			if err := rows.Scan(valuePtrs...); err != nil {
-				return c.JSON(http.StatusInternalServerError, map[string]string{
-					"error": "Failed to scan row: " + err.Error(),
-				})
+				return c.SendInternalError("Failed to scan row: ", err)
 			}
 
 			row := make(map[string]any)
@@ -121,14 +110,10 @@ func (dc *SQLQueryController) QueryHandler(c echo.Context) error {
 			}
 			results = append(results, row)
 		}
-
 		if err = rows.Err(); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "Row iteration error: " + err.Error(),
-			})
+			return c.SendInternalError("Row iteration error", err)
 		}
-
-		return c.JSON(http.StatusOK, results)
+		return c.Send(results)
 	})
 }
 
@@ -143,7 +128,7 @@ type ClusterMember struct {
 }
 
 // ClusterStatusHandler is a specific handler using GenericQueryHandler
-func (dc *SQLQueryController) ClusterStatusHandler(c echo.Context) error {
+func (dc *SQLQueryController) ClusterStatusHandler(c http.Context) error {
 	query := `
         SELECT 
             MEMBER_ID,
@@ -156,18 +141,22 @@ func (dc *SQLQueryController) ClusterStatusHandler(c echo.Context) error {
             performance_schema.replication_group_members
     `
 	var results = []ClusterMember{}
-	err := dc.connector.GenericQueryHandler(c.Request().Context(), 0, query, results, c)
+	err := dc.connector.GenericQueryHandler(c.GetRequestContext(), 0, query, results, c)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"error": "Failed to execute query: " + err.Error(),
-		})
+		return c.SendInternalError("Failed to execute query: ", err)
 	}
 	return nil
 }
 
 // AddEndpoint configures the controller routes
-func (dc *SQLQueryController) AddEndpoint(prefix string, e *echo.Echo) error {
-	e.POST(fmt.Sprintf("%s/sql/query", prefix), dc.QueryHandler)
-	e.GET(fmt.Sprintf("%s/sql/cluster", prefix), dc.ClusterStatusHandler)
+func (dc *SQLQueryController) AddEndpoint(prefix string, e http.Router) error {
+	err := e.Add(http.GET, fmt.Sprintf("%s/sql/cluster", prefix), dc.ClusterStatusHandler)
+	if err != nil {
+		return err
+	}
+	err = e.Add(http.POST, fmt.Sprintf("%s/sql/query", prefix), dc.QueryHandler)
+	if err != nil {
+		return err
+	}
 	return nil
 }

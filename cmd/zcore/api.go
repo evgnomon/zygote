@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/evgnomon/zygote/internal/controller"
 	"github.com/evgnomon/zygote/internal/server"
+	"github.com/evgnomon/zygote/pkg/http"
 	"github.com/evgnomon/zygote/pkg/utils"
 )
 
@@ -17,7 +18,7 @@ func main() {
 	hw := controller.NewHelloWorldController()
 	rc, err := controller.NewRedisQueryController(nil)
 	logger.FatalIfErr("Create redis controller", err)
-	err = s.AddControllers([]controller.Controller{
+	err = s.AddControllers([]http.Controller{
 		dbC,
 		hw,
 		rc,

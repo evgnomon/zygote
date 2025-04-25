@@ -2,9 +2,8 @@ package controller
 
 import (
 	"fmt"
-	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/evgnomon/zygote/pkg/http"
 )
 
 // HelloWorldController struct to hold controller data
@@ -18,9 +17,9 @@ func NewHelloWorldController() *HelloWorldController {
 }
 
 // AddEndpoint implements the Controller interface
-func (c *HelloWorldController) AddEndpoint(prefix string, e *echo.Echo) error {
-	// Register the hello world endpoint with the prefix
-	e.GET(prefix+"/hello", c.handleHello)
+func (c *HelloWorldController) AddEndpoint(prefix string, e http.Router) error {
+	err := e.Add(http.GET, prefix+"/hello", c.handleHello)
+	logger.FatalIfErr("Add hello endpoint", err)
 	return nil
 }
 
@@ -31,10 +30,10 @@ func (c *HelloWorldController) Close() error {
 }
 
 // handleHello is the handler for the hello endpoint
-func (c *HelloWorldController) handleHello(ctx echo.Context) error {
-	clientCert := ctx.Request().TLS.PeerCertificates
-	if len(clientCert) > 0 {
-		return ctx.String(http.StatusOK, fmt.Sprintf("Hello, %s! You've been authenticated!\n", clientCert[0].Subject.CommonName))
+func (c *HelloWorldController) handleHello(ctx http.Context) error {
+	u, err := ctx.GetUser()
+	if err != nil {
+		return ctx.SendUnauthorizedError()
 	}
-	return ctx.String(http.StatusUnauthorized, "Unauthorized")
+	return ctx.SendString(fmt.Sprintf("Hello, %s! You've been authenticated!\n", u))
 }
