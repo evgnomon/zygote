@@ -41,6 +41,7 @@ func main() {
 			commands.MigrateCommand(),
 			commands.OpenActions(),
 			commands.OpenDiffs(),
+			commands.OpenPackages(),
 			commands.QCommand(),
 			commands.SQLCommand(),
 			commands.SmokerCommand(),

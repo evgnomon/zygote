@@ -292,6 +292,13 @@ func RepoFullName() string {
 	return formatted
 }
 
+func RepoName() string {
+	repoPath, err := os.Getwd()
+	logger.FatalIfErr("Error getting current directory", err)
+	repo := filepath.Base(repoPath)
+	return repo
+}
+
 func RepoVaultPath() string {
 	vaultAddress := RepoFullName()
 	secretFile := filepath.Join(UserHome(), ".blueprint", "secrets", fmt.Sprintf("%s.yaml", vaultAddress))
