@@ -26,16 +26,45 @@
     - z_deploy
     - never
 
-- name: Deploy
+- name: Add front
+  hosts: localhost
+  collections:
+    - evgnomon.catamaran
+  tasks:
+    - name: Add front
+      add_host:
+        name: "{{ item }}"
+        groups: front
+        ansible_user: "root"
+      with_items:
+        - front-a-1.zygote.run
+        - front-b-1.zygote.run
+  tags:
+    - z_deploy
+    - never
+
+- name: Deploy ZCore
+  hosts:
+    - shards
+    - front
+  gather_facts: false
+  collections:
+    - evgnomon.catamaran
+  roles:
+    - role: z_service
+      vars:
+        z_service_name: "zcore"
+  tags:
+    - z_deploy
+    - never
+
+- name: Join Shards
   hosts: shards
   gather_facts: false
   collections:
     - evgnomon.catamaran
   roles:
     - role: z_join
-    - role: z_service
-      vars:
-        z_service_name: "zcore"
   tags:
-    - z_deploy
+    - z_join
     - never

@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"net/http"
 )
 
 type RouteOpt interface {
@@ -17,6 +18,7 @@ const (
 	PUT
 	DELETE
 	PATCH
+	ANY
 )
 
 type Router interface {
@@ -32,6 +34,9 @@ type Context interface {
 	Send(response any) error
 	SendInternalError(msg string, err error) error
 	GetRequestContext() context.Context
+	Request() *http.Request
+	ResponseWriter() http.ResponseWriter
+	Path() string
 }
 
 type Controller interface {

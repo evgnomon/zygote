@@ -150,7 +150,7 @@ func (dc *SQLQueryController) ClusterStatusHandler(c http.Context) error {
 
 // AddEndpoint configures the controller routes
 func (dc *SQLQueryController) AddEndpoint(prefix string, e http.Router) error {
-	err := e.Add(http.GET, fmt.Sprintf("%s/sql/cluster", prefix), dc.ClusterStatusHandler)
+	err := e.Add(http.GET, fmt.Sprintf("%s/sql/cluster/node", prefix), dc.ClusterStatusHandler)
 	if err != nil {
 		return err
 	}

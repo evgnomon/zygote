@@ -147,6 +147,17 @@ type Context struct {
 	echo.Context
 }
 
+// Path implements http.Context.
+// Subtle: this method shadows the method (Context).Path of Context.Context.
+func (c *Context) Path() string {
+	return c.Request().URL.Path
+}
+
+// ResponseWriter implements http.Context.
+func (c *Context) ResponseWriter() nethttp.ResponseWriter {
+	return c.Response().Writer
+}
+
 // BindBody implements http.Context.
 func (c *Context) BindBody(b any) error {
 	err := c.Bind(b)
@@ -226,8 +237,14 @@ func (s *Server) Add(method http.Method, path string, handler func(http.Context)
 		s.e.PATCH(path, func(c echo.Context) error {
 			return handler(NewContext(c))
 		})
+	case http.ANY:
+		s.e.Any(path, func(c echo.Context) error {
+			return handler(NewContext(c))
+		})
+	default:
+		return fmt.Errorf("unsupported method")
 	}
-	return fmt.Errorf("unsupported method")
+	return nil
 }
 
 func (s *Server) AddControllers(controllers []http.Controller) error {

@@ -18,10 +18,12 @@ func main() {
 	hw := controller.NewHelloWorldController()
 	rc, err := controller.NewRedisQueryController(nil)
 	logger.FatalIfErr("Create redis controller", err)
+	relayC := controller.NewRelayController()
 	err = s.AddControllers([]http.Controller{
 		dbC,
 		hw,
 		rc,
+		relayC,
 	})
 	logger.FatalIfErr("Add controllers", err)
 	err = s.Listen()
