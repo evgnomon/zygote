@@ -67,6 +67,8 @@ func TestApplyTemplate(t *testing.T) {
 				"mysql_native_password=ON",
 				"sql_require_primary_key=ON",
 				`disabled_storage_engines="MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY"`,
+				"max_connections = 300",
+				"mysqlx_max_connections = 200",
 			},
 		},
 		{
@@ -97,6 +99,8 @@ func TestApplyTemplate(t *testing.T) {
 				"mysql_native_password=ON",
 				"sql_require_primary_key=ON",
 				`disabled_storage_engines="MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY"`,
+				"max_connections = 300",
+				"mysqlx_max_connections = 200",
 			},
 		},
 	}
