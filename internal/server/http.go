@@ -21,11 +21,12 @@ import (
 var logger = utils.NewLogger()
 
 type Server struct {
-	e       *echo.Echo
-	cs      *cert.CertService
-	useACME bool
-	domain  string
-	port    int
+	e             *echo.Echo
+	cs            *cert.CertService
+	useACME       bool
+	useDomainCert bool
+	hostName      string
+	port          int
 }
 
 func NewServer() (*Server, error) {
@@ -37,10 +38,11 @@ func NewServer() (*Server, error) {
 		return nil, fmt.Errorf("failed to create cert service: %w", err)
 	}
 	s.cs = cs
-	s.domain = utils.HostName()
+	s.hostName = utils.HostName()
 
 	// Configure certificate handling based on ACME flag
 	s.useACME = strings.ToLower(os.Getenv("ACME")) == "true"
+	s.useDomainCert = strings.ToLower(os.Getenv("USE_DOMAIN_CERT")) == "true"
 	port := os.Getenv("ZCORE_PORT")
 	if port == "" {
 		s.port = 8443
@@ -71,12 +73,17 @@ func (s *Server) tlsConfig() (*tls.Config, error) {
 		MinVersion: tls.VersionTLS12,
 	}
 
+	hostPolicies := autocert.HostWhitelist(s.hostName)
+	if s.useDomainCert {
+		hostPolicies = autocert.HostWhitelist(s.hostName, utils.DomainName())
+	}
+
 	if s.useACME {
 		// Let's Encrypt configuration
 		certManager := autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
-			HostPolicy: autocert.HostWhitelist(s.domain),
-			Cache:      autocert.DirCache(s.cs.FunctionsCertDir(s.domain)),
+			HostPolicy: hostPolicies,
+			Cache:      autocert.DirCache(s.cs.FunctionsCertDir(s.hostName)),
 		}
 		tlsConfig.GetCertificate = certManager.GetCertificate
 
@@ -99,8 +106,8 @@ func (s *Server) tlsConfig() (*tls.Config, error) {
 	} else {
 		// Use local certificates
 		serverCert, err := tls.LoadX509KeyPair(
-			s.cs.FunctionCertFile(s.domain),
-			s.cs.FunctionKeyFile(s.domain),
+			s.cs.FunctionCertFile(s.hostName),
+			s.cs.FunctionKeyFile(s.hostName),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load server certificate: %w", err)
@@ -128,13 +135,13 @@ func (s *Server) Listen() error {
 	}
 
 	// Start the server
-	logger.Info("Starting serverd", utils.M{"port": s.port, "domain": s.domain})
+	logger.Info("Starting serverd", utils.M{"port": s.port, "domain": s.hostName})
 	if s.useACME {
 		err = httpServer.ListenAndServeTLS("", "")
 	} else {
 		err = httpServer.ListenAndServeTLS(
-			s.cs.FunctionCertFile(s.domain),
-			s.cs.FunctionKeyFile(s.domain),
+			s.cs.FunctionCertFile(s.hostName),
+			s.cs.FunctionKeyFile(s.hostName),
 		)
 	}
 	if err != nil {

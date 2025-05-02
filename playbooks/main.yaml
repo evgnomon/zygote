@@ -43,9 +43,22 @@
     - z_deploy
     - never
 
-- name: Deploy ZCore
+- name: Deploy ZCore on shards
   hosts:
     - shards
+  gather_facts: false
+  collections:
+    - evgnomon.catamaran
+  roles:
+    - role: z_service
+      vars:
+        z_service_name: "zcore"
+  tags:
+    - z_deploy
+    - never
+
+- name: Deploy ZCore on front
+  hosts:
     - front
   gather_facts: false
   collections:
@@ -54,6 +67,7 @@
     - role: z_service
       vars:
         z_service_name: "zcore"
+        z_use_domain_cert: true
   tags:
     - z_deploy
     - never
