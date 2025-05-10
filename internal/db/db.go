@@ -164,10 +164,6 @@ func (s *SQLNode) Endpoints() []string {
 	return s.generateAddresses(mysqlPublicDefaultPort)
 }
 
-func (s *SQLNode) GroupReplicationAddresses() []string {
-	return s.generateAddresses(groupRepDefaultPort)
-}
-
 func (s *SQLNode) GroupReplicationHosts(shardIndex int) []string {
 	if s.ShardSize == 0 {
 		return nil
@@ -212,6 +208,8 @@ func (s *SQLNode) StartSQLContainers(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to join group replication: %w", err)
 	}
+	err = s.MakeGroupReplicationBootstrapFile()
+	logger.FatalIfErr("Create group replication bootstrap file", err)
 	return nil
 }
 
@@ -275,7 +273,7 @@ func (s *SQLNode) MakeGroupReplicationConfigVolume() error {
 		ServerID:             s.RepIndex + 1,
 		GroupReplicationPort: groupRepDefaultPort,
 		ServerCount:          s.ShardSize,
-		ServersList:          strings.Join(s.GroupReplicationAddresses(), ","),
+		ServersList:          s.groupSeedsValue(),
 		ReportAddress:        s.reportSQLInstanceAddress(),
 		ReportPort:           mysqlPublicDefaultPort,
 	}
@@ -285,6 +283,45 @@ func (s *SQLNode) MakeGroupReplicationConfigVolume() error {
 	}
 	container.Vol(s.Tenant, innodbGroupReplication, fmt.Sprintf("%s-conf-gr", s.ContainerName(dbShortName)),
 		"/etc/mysql/conf.d/", "gr.cnf", container.AppNetworkName())
+	return err
+}
+
+type GroupBootstrapParams struct {
+	GroupName        string
+	LocalAddress     string
+	GroupSeeds       string
+	GroupIPAllowList string
+}
+
+func (s *SQLNode) groupIPAllowListValue() string {
+	return fmt.Sprintf("172.18.0.0/16,127.0.0.1,%s",
+		strings.Join(s.GroupReplicationHosts(s.ShardIndex), ","))
+}
+
+func (s *SQLNode) groupSeedsValue() string {
+	return strings.Join(s.generateAddresses(groupRepDefaultPort), ",")
+}
+
+func (s *SQLNode) localAddressValue() string {
+	return fmt.Sprintf("%s:%d",
+		s.GroupReplicationHosts(s.ShardIndex)[s.RepIndex], groupRepDefaultPort,
+	)
+}
+
+func (s *SQLNode) MakeGroupReplicationBootstrapFile() error {
+	const grBootTmplName = "gr-bootstrap.cnf"
+	bootParams := GroupBootstrapParams{
+		GroupName:        s.GroupName,
+		LocalAddress:     s.localAddressValue(),
+		GroupSeeds:       s.groupSeedsValue(),
+		GroupIPAllowList: s.groupIPAllowListValue(),
+	}
+	bootstrapFile, err := container.ApplyTemplate(grBootTmplName, bootParams)
+	if err != nil {
+		return err
+	}
+	container.Vol(s.Tenant, bootstrapFile, fmt.Sprintf("%s-conf-gr", s.ContainerName(dbShortName)),
+		"/etc/mysql/conf.d/", "gr-boot.cnf", container.AppNetworkName())
 	return err
 }
 
@@ -654,12 +691,9 @@ func (s *SQLNode) JoinGroupReplication() error {
 		"EXECUTE stmt;",
 		"DEALLOCATE PREPARE stmt;",
 		fmt.Sprintf("SET GLOBAL group_replication_group_name = '%s'", s.GroupName),
-		fmt.Sprintf("SET GLOBAL group_replication_local_address = '%s:%d'",
-			s.GroupReplicationHosts(s.ShardIndex)[s.RepIndex], groupRepDefaultPort),
-		fmt.Sprintf("SET GLOBAL group_replication_group_seeds = '%s'",
-			strings.Join(s.GroupReplicationAddresses(), ",")),
-		fmt.Sprintf("SET GLOBAL group_replication_ip_allowlist = '172.18.0.0/16,127.0.0.1,%s'",
-			strings.Join(s.GroupReplicationHosts(s.ShardIndex), ",")),
+		fmt.Sprintf("SET GLOBAL group_replication_local_address = '%s'", s.localAddressValue()),
+		fmt.Sprintf("SET GLOBAL group_replication_group_seeds = '%s'", s.groupSeedsValue()),
+		fmt.Sprintf("SET GLOBAL group_replication_ip_allowlist = '%s'", s.groupIPAllowListValue()),
 		"SET SQL_LOG_BIN = 0",
 		"CREATE USER 'repl'@'%' IDENTIFIED with mysql_native_password BY 'strong_password'",
 		"GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'repl'@'%'",

@@ -1,0 +1,5 @@
+[mysqld]
+group_replication_group_name = "{{ .GroupName }}"
+group_replication_local_address = "{{ .LocalAddress }}"
+group_replication_group_seeds = "{{ .GroupSeeds }}"
+group_replication_ip_allowlist = "{{ .GroupIPAllowList }}"
