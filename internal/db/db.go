@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/evgnomon/zygote/internal/container"
+	"github.com/evgnomon/zygote/pkg/cert"
+	"github.com/evgnomon/zygote/pkg/tables"
 	"github.com/evgnomon/zygote/pkg/utils"
 )
 
@@ -98,7 +100,7 @@ func (s *SQLNode) MakeDB(ctx context.Context) error {
 	if dbName == "" {
 		dbName = utils.RepoFullName()
 	}
-	containerName := s.DBContainerName()
+	containerName := s.sqlContainerName()
 	containerConfig := &container.ContainerConfig{
 		Name:        containerName,
 		NetworkName: s.NetworkName,
@@ -119,6 +121,7 @@ func (s *SQLNode) MakeDB(ctx context.Context) error {
 			fmt.Sprintf("%s-data:/var/lib/mysql", containerName),
 			fmt.Sprintf("%s-conf-gr:/etc/mysql/conf.d", containerName),
 			fmt.Sprintf("%s-conf:/docker-entrypoint-initdb.d", containerName),
+			fmt.Sprintf("%s:/etc/certs", s.certVolName()),
 		},
 		Caps: []string{"SYS_NICE"},
 		EnvVars: []string{
@@ -342,7 +345,28 @@ func (s *SQLNode) MakeSQLConfBVolume() error {
 	return nil
 }
 
+func (s *SQLNode) sqlContainerName() string {
+	return s.ContainerName(dbShortName)
+}
+
+func (s *SQLNode) certVolName() string {
+	return fmt.Sprintf("%s-conf-cert", s.sqlContainerName())
+}
+
+func (s *SQLNode) makeCertsVolume() {
+	c, err := cert.Cert()
+	logger.FatalIfErr("Create cert service", err)
+
+	container.Vol(s.Tenant, c.CaCertPublic(), s.certVolName(),
+		"/etc/certs", "my-ca-cert.pem", container.AppNetworkName())
+	container.Vol(s.Tenant, c.FunctionCertPublic(s.sqlContainerName()), s.certVolName(),
+		"/etc/certs", "my-server-cert.pem", container.AppNetworkName())
+	container.Vol(s.Tenant, c.FunctionCertPrivate(s.sqlContainerName()), s.certVolName(),
+		"/etc/certs", "my-server-key.pem", container.AppNetworkName())
+}
+
 func (s *SQLNode) MakeSQLReplica(ctx context.Context) error {
+	s.makeCertsVolume()
 	err := s.MakeSQLConfBVolume()
 	if err != nil {
 		return fmt.Errorf("failed to create SQL config volume: %w", err)
@@ -646,19 +670,30 @@ type CreateIndexParams struct {
 	FullText bool
 }
 
-func (s *SQLNode) DBContainerName() string {
-	return s.ContainerName(dbShortName)
-}
-
 func (s *SQLNode) SQLRouterContainerName() string {
 	return s.ContainerName(dbRouterShortName)
 }
 
 func (s *SQLNode) connectionString(dbName string) string {
 	if s.NetworkName != hostNetworkName {
-		return fmt.Sprintf("root:%s@tcp(%s:%d)/%s", s.RootPassword, localhostIP, s.mapPort(mysqlPublicDefaultPort), dbName)
+		return fmt.Sprintf("root:%s@tcp(%s:%d)/%s?tls=sqlTLS", s.RootPassword, localhostIP, s.mapPort(mysqlPublicDefaultPort), dbName)
 	}
-	return fmt.Sprintf("root:%s@tcp(%s:%d)/%s", s.RootPassword, localhostIP, mysqlPublicDefaultPort, dbName)
+	return fmt.Sprintf("root:%s@tcp(%s:%d)/%s?tls=sqlTLS", s.RootPassword, localhostIP, mysqlPublicDefaultPort, dbName)
+}
+
+func (s *SQLNode) GetDB() (*sql.DB, error) {
+	tables.RegisterTLSConfig("provisioner")
+	dsn := s.connectionString(s.DatabaseName)
+	db, err := sql.Open(defaultConnDatabaseName, dsn)
+	if err != nil {
+		logger.Debug("Error connecting to database", utils.M{
+			"dsn":          dsn,
+			"replicaIndex": s.RepIndex,
+			"shardIndex":   s.ShardIndex,
+		})
+		return nil, fmt.Errorf("error connecting to database repindex %d shardIndex %d: %v", s.RepIndex, s.ShardIndex, err)
+	}
+	return db, nil
 }
 
 func (s *SQLNode) JoinGroupReplication() error {
@@ -671,17 +706,8 @@ func (s *SQLNode) JoinGroupReplication() error {
 			db.Close()
 		}
 	}()
-	dsn := s.connectionString(defaultConnDatabaseName)
-	// Connect to specific node
-	db, err = sql.Open(defaultConnDatabaseName, dsn)
-	if err != nil {
-		logger.Debug("Error connecting to database", utils.M{
-			"dsn":          dsn,
-			"replicaIndex": s.RepIndex,
-			"shardIndex":   s.ShardIndex,
-		})
-		return fmt.Errorf("error connecting to database repindex %d shardIndex %d: %v", s.RepIndex, s.ShardIndex, err)
-	}
+	db, err = s.GetDB()
+	logger.FatalIfErr("Connect to database", err)
 
 	// Common setup queries for all nodes
 	queries := []string{
@@ -694,6 +720,11 @@ func (s *SQLNode) JoinGroupReplication() error {
 		fmt.Sprintf("SET GLOBAL group_replication_local_address = '%s'", s.localAddressValue()),
 		fmt.Sprintf("SET GLOBAL group_replication_group_seeds = '%s'", s.groupSeedsValue()),
 		fmt.Sprintf("SET GLOBAL group_replication_ip_allowlist = '%s'", s.groupIPAllowListValue()),
+		"SET GLOBAL group_replication_ssl_mode = 'REQUIRED'",
+		"SET GLOBAL group_replication_recovery_use_ssl = 1",
+		"SET GLOBAL group_replication_recovery_ssl_ca = '/etc/certs/my-ca-cert.pem'",
+		"SET GLOBAL group_replication_recovery_ssl_cert = '/etc/certs/my-server-cert.pem'",
+		"SET GLOBAL group_replication_recovery_ssl_key = '/etc/certs/my-server-key.pem'",
 		"SET SQL_LOG_BIN = 0",
 		"CREATE USER 'repl'@'%' IDENTIFIED with mysql_native_password BY 'strong_password'",
 		"GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'repl'@'%'",

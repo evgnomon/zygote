@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/evgnomon/zygote/internal/cert"
 	"github.com/evgnomon/zygote/internal/controller"
+	"github.com/evgnomon/zygote/pkg/cert"
 	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/urfave/cli/v2"
 )

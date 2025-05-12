@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/evgnomon/zygote/pkg/utils"
@@ -37,6 +39,13 @@ func Cert() (*CertService, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if strings.Contains(userDir, "root") {
+		sudoUser := os.Getenv("SUDO_USER")
+		if sudoUser != "" {
+			userDir = "/home/" + sudoUser
+		}
+	}
 	cs := CertService{
 		ConfigHome: filepath.Join(userDir, ".config", "zygote"),
 	}
@@ -57,6 +66,25 @@ func (c *CertService) CaCertDir() string {
 // Get ca cert file path
 func (c *CertService) CaCertFile() string {
 	return filepath.Join(c.CaCertDir(), "ca_cert.pem")
+}
+
+func (c *CertService) FunctionCertPublic(name string) string {
+	a, err := os.ReadFile(c.FunctionCertFile(name))
+	logger.FatalIfErr("Read function cert file", err)
+	return string(a)
+}
+
+func (c *CertService) FunctionCertPrivate(name string) string {
+	a, err := os.ReadFile(c.FunctionKeyFile(name))
+	logger.FatalIfErr("Read function key file", err)
+	return string(a)
+}
+
+// Get ca cert file path
+func (c *CertService) CaCertPublic() string {
+	a, err := os.ReadFile(c.CaCertFile())
+	logger.FatalIfErr("Read CA cert file", err)
+	return string(a)
 }
 
 // Get ca cert file path
@@ -178,6 +206,16 @@ func (c *CertService) Sign(domainName []string, expiresAt time.Time, password st
 	if err != nil {
 		return fmt.Errorf("failed to generate serial number: %v", err)
 	}
+	// Parse IP addresses
+	var ips []net.IP
+	ipAddresses := []string{"127.0.0.1"}
+	for _, ipStr := range ipAddresses {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			return fmt.Errorf("invalid IP address: %s", ipStr)
+		}
+		ips = append(ips, ip)
+	}
 	serverTemplate := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
@@ -188,6 +226,7 @@ func (c *CertService) Sign(domainName []string, expiresAt time.Time, password st
 		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageCodeSigning},
 		DNSNames:    domainName,
+		IPAddresses: ips,
 	}
 
 	serverCertDER, err := x509.CreateCertificate(rand.Reader, &serverTemplate, caCert, &serverPriv.PublicKey, caPriv)
