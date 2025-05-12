@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evgnomon/zygote/internal/cert"
+	"github.com/evgnomon/zygote/pkg/cert"
 	"github.com/evgnomon/zygote/pkg/http"
 	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/labstack/echo/v4"
