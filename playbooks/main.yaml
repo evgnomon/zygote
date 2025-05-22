@@ -24,6 +24,7 @@
     - z_add_shards
   tags:
     - z_deploy
+    - z_join
     - never
 
 - name: Add front

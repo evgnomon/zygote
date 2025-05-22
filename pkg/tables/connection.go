@@ -169,7 +169,7 @@ func RegisterTLSConfig(clientName string) {
 
 // connect establishes a database connection for a shard
 func (m *MultiDBConnector) connect(ctx context.Context, shardIndex int, connType connectionType) (*sql.DB, error) {
-	RegisterTLSConfig(provisionerName)
+	RegisterTLSConfig(utils.HostName())
 	var db *sql.DB
 	var err error
 	b := utils.BackoffConfig{
