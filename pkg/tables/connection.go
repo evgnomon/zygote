@@ -20,7 +20,6 @@ import (
 )
 
 const defaultReplica = 0
-const provisionerName = "provisioner"
 
 var logger = utils.NewLogger()
 
