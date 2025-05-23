@@ -2,6 +2,8 @@ package tables
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
+	"github.com/evgnomon/zygote/pkg/cert"
 	"github.com/evgnomon/zygote/pkg/http"
 	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/go-sql-driver/mysql"
@@ -139,8 +142,33 @@ const (
 	writeConn connectionType = "write"
 )
 
+func RegisterTLSConfig(clientName string) {
+	s, err := cert.Cert()
+	logger.FatalIfErr("Create cert service", err)
+	caCert := s.CaCertPublic()
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM([]byte(caCert)) {
+		logger.Fatal("Failed to append CA certificate")
+	}
+	tlsConfig := &tls.Config{
+		RootCAs:    caCertPool,
+		MinVersion: tls.VersionTLS12,
+		Certificates: func() []tls.Certificate {
+			cert, err := tls.LoadX509KeyPair(
+				s.FunctionCertFile(clientName),
+				s.FunctionKeyFile(clientName),
+			)
+			logger.FatalIfErr("Load provisioner client certificate", err)
+			return []tls.Certificate{cert}
+		}(),
+	}
+	err = mysql.RegisterTLSConfig("sqlTLS", tlsConfig)
+	logger.FatalIfErr("Register TLS config", err)
+}
+
 // connect establishes a database connection for a shard
 func (m *MultiDBConnector) connect(ctx context.Context, shardIndex int, connType connectionType) (*sql.DB, error) {
+	RegisterTLSConfig(utils.HostName())
 	var db *sql.DB
 	var err error
 	b := utils.BackoffConfig{
@@ -182,7 +210,7 @@ func (m *MultiDBConnector) connect(ctx context.Context, shardIndex int, connType
 		}
 
 		// Construct DSN
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
+		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&tls=sqlTLS",
 			config.User,
 			config.Password,
 			config.Host,

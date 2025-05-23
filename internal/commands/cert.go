@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/evgnomon/zygote/internal/cert"
+	"github.com/evgnomon/zygote/pkg/cert"
 	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/urfave/cli/v2"
 )
@@ -39,11 +39,11 @@ func CertCommand() *cli.Command {
 				Name:  "sign",
 				Usage: "Sign a certificate",
 				Flags: []cli.Flag{
-					&cli.StringFlag{
+					&cli.StringSliceFlag{
 						Name:    "name",
 						Aliases: []string{"n"},
 						Usage:   "Domain address",
-						Value:   utils.User(),
+						Value:   cli.NewStringSlice(utils.User()),
 					},
 					&cli.StringFlag{
 						Name:    "password",
@@ -61,7 +61,7 @@ func CertCommand() *cli.Command {
 						return fmt.Errorf("name is required")
 					}
 
-					return cs.Sign([]string{c.String("name")}, time.Now().AddDate(1, 0, 0), c.String("password"))
+					return cs.Sign(c.StringSlice("name"), time.Now().AddDate(1, 0, 0), c.String("password"))
 				},
 			},
 		},

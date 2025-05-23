@@ -24,6 +24,7 @@
     - z_add_shards
   tags:
     - z_deploy
+    - z_join
     - never
 
 - name: Add front
@@ -50,6 +51,9 @@
   collections:
     - evgnomon.catamaran
   roles:
+    - role: z_ca_deploy
+      vars:
+        function_name: "{{ z_user }}-sql-{{ z_replica_index }}{{ z_shard_suffix }}"
     - role: z_service
       vars:
         z_service_name: "zcore"

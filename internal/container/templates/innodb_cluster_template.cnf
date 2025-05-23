@@ -17,3 +17,7 @@ sql_require_primary_key=ON
 disabled_storage_engines="MyISAM,BLACKHOLE,FEDERATED,ARCHIVE,MEMORY"
 max_connections = 300
 mysqlx_max_connections = 200
+require_secure_transport=ON
+ssl_ca=/etc/certs/my-ca-cert.pem
+ssl_cert=/etc/certs/my-server-cert.pem
+ssl_key=/etc/certs/my-server-key.pem
