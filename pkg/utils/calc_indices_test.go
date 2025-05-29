@@ -40,7 +40,7 @@ func TestCalculateIndices(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := CalculateIndices(tt.hostname)
+			got, err := GetClusterIndex(tt.hostname)
 
 			// Check error condition
 			if (err != nil) != tt.wantErr {

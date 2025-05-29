@@ -2,8 +2,6 @@ package tables
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -104,8 +102,8 @@ func NewClientConfig(targetReadPort, targetWritePort int) *ClientConfig {
 	}
 }
 
-// CalculateShardEndpoints generates shard endpoints
-func CalculateShardEndpoints(network, domain string, numShards,
+// SQLEndpoints generates shard endpoints
+func SQLEndpoints(network, domain string, numShards,
 	targetReadPort, targetWritePort int) ([]ShardEndpoint, error) {
 	if numShards <= 0 {
 		return nil, fmt.Errorf("shard count must be positive")
@@ -118,7 +116,7 @@ func CalculateShardEndpoints(network, domain string, numShards,
 	for shardIndex := 0; shardIndex < numShards; shardIndex++ {
 		endpoints[shardIndex] = ShardEndpoint{
 			Index:     shardIndex,
-			Host:      utils.RemoteHost(network, domain, defaultReplica, shardIndex),
+			Host:      utils.NodeHost(network, domain, defaultReplica, shardIndex),
 			ReadPort:  utils.NodePort(network, targetReadPort, 0, shardIndex),
 			WritePort: utils.NodePort(network, targetWritePort, 0, shardIndex),
 		}
@@ -143,26 +141,7 @@ const (
 )
 
 func RegisterTLSConfig(clientName string) {
-	s, err := cert.Cert()
-	logger.FatalIfErr("Create cert service", err)
-	caCert := s.CaCertPublic()
-	caCertPool := x509.NewCertPool()
-	if !caCertPool.AppendCertsFromPEM([]byte(caCert)) {
-		logger.Fatal("Failed to append CA certificate")
-	}
-	tlsConfig := &tls.Config{
-		RootCAs:    caCertPool,
-		MinVersion: tls.VersionTLS12,
-		Certificates: func() []tls.Certificate {
-			cert, err := tls.LoadX509KeyPair(
-				s.FunctionCertFile(clientName),
-				s.FunctionKeyFile(clientName),
-			)
-			logger.FatalIfErr("Load provisioner client certificate", err)
-			return []tls.Certificate{cert}
-		}(),
-	}
-	err = mysql.RegisterTLSConfig("sqlTLS", tlsConfig)
+	err := mysql.RegisterTLSConfig("sqlTLS", cert.TLSConfig(clientName))
 	logger.FatalIfErr("Register TLS config", err)
 }
 
@@ -254,7 +233,7 @@ func (m *MultiDBConnector) ConnectWrite(ctx context.Context, shardIndex int) (*s
 
 // ConnectAllShardsRead connects to all shards for read in parallel
 func (m *MultiDBConnector) ConnectAllShardsRead(ctx context.Context) (map[int]*sql.DB, error) {
-	endpoints, err := CalculateShardEndpoints(m.network, m.domain, m.numShards, m.taregtReadPort, m.targetWritePort)
+	endpoints, err := SQLEndpoints(m.network, m.domain, m.numShards, m.taregtReadPort, m.targetWritePort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate shard endpoints: %v", err)
 	}
@@ -311,7 +290,7 @@ func (m *MultiDBConnector) ConnectAllShardsRead(ctx context.Context) (map[int]*s
 
 // ConnectAllShardsWrite connects to all shards for write in parallel
 func (m *MultiDBConnector) ConnectAllShardsWrite(ctx context.Context) (map[int]*sql.DB, error) {
-	endpoints, err := CalculateShardEndpoints(m.network, m.domain, m.numShards, m.taregtReadPort, m.targetWritePort)
+	endpoints, err := SQLEndpoints(m.network, m.domain, m.numShards, m.taregtReadPort, m.targetWritePort)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate shard endpoints: %v", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"log"
 
+	"github.com/evgnomon/zygote/pkg/mem"
 	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/redis/go-redis/v9"
 )
@@ -64,9 +65,8 @@ func RetrieveFromRedis(client *redis.ClusterClient, ctx context.Context, key str
 func RunExample() {
 	// Initialize Redis client
 	ctx := context.Background()
-	client := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs: []string{"shard-a.zygote.run:6373", "shard-b.zygote.run:6373", "shard-c.zygote.run:6373"},
-	})
+	client, err := mem.Client()
+	logger.FatalIfErr("Create Redis client", err)
 
 	// Sample data
 	data := map[string]any{

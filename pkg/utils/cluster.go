@@ -5,9 +5,11 @@ import (
 	"os"
 )
 
+const defaultNetworkName = "mynet"
 const hostNetworkName = "host"
 const maxShardSize = 9
 const myZygoteDomain = "my.zygote.run"
+const networkNameEnvVar = "DOCKER_NETWORK_NAME"
 
 func NodePort(network string, targetPort, replicaIndex, shardIndex int) int {
 	if network == hostNetworkName {
@@ -24,40 +26,7 @@ func NodePort(network string, targetPort, replicaIndex, shardIndex int) int {
 	return targetPort + replicaIndex*10 + 100*shardIndex
 }
 
-func NodeContainer(nodeType, tenant string, replicaIndex, shardIndex int) string {
-	if shardIndex == 0 {
-		return fmt.Sprintf("%s-%s-%s", tenant, nodeType, string('a'+rune(replicaIndex)))
-	}
-	return fmt.Sprintf("%s-%s-%s-%d", tenant, nodeType, string('a'+rune(replicaIndex)), shardIndex)
-}
-
-func NodeEndpoint(network, nodeType, tenant, domain string, targetPort, replicaIndex, shardIndex int) string {
-	shardName := string('a' + rune(replicaIndex))
-	if network != hostNetworkName {
-		return fmt.Sprintf("%s:%d",
-			NodeContainer(nodeType, tenant, replicaIndex, shardIndex),
-			NodePort(network, targetPort, replicaIndex, shardIndex))
-	}
-	if shardIndex > 0 {
-		return fmt.Sprintf("shard-%s-%d.%s:%d", shardName, shardIndex, domain, targetPort)
-	} else {
-		return fmt.Sprintf("shard-%s.%s:%d", shardName, domain, targetPort)
-	}
-}
-
-func NodeHost(network, nodeType, tenant, domain string, replicaIndex, shardIndex int) string {
-	shardName := string('a' + rune(replicaIndex))
-	if network != hostNetworkName {
-		return NodeContainer(nodeType, tenant, replicaIndex, shardIndex)
-	}
-	if shardIndex > 0 {
-		return fmt.Sprintf("shard-%s-%d.%s", shardName, shardIndex, domain)
-	} else {
-		return fmt.Sprintf("shard-%s.%s", shardName, domain)
-	}
-}
-
-func RemoteHost(network, domain string, replicaIndex, shardIndex int) string {
+func NodeHost(network, domain string, replicaIndex, shardIndex int) string {
 	shardName := string('a' + rune(replicaIndex))
 	if network != hostNetworkName {
 		return "127.0.0.1"
@@ -67,6 +36,13 @@ func RemoteHost(network, domain string, replicaIndex, shardIndex int) string {
 	} else {
 		return fmt.Sprintf("shard-%s.%s", shardName, domain)
 	}
+}
+
+func NodeContainer(nodeType, tenant string, replicaIndex, shardIndex int) string {
+	if shardIndex == 0 {
+		return fmt.Sprintf("%s-%s-%s", tenant, nodeType, string('a'+rune(replicaIndex)))
+	}
+	return fmt.Sprintf("%s-%s-%s-%d", tenant, nodeType, string('a'+rune(replicaIndex)), shardIndex)
 }
 
 func DomainName() string {
@@ -91,4 +67,15 @@ func TenantName() string {
 		domain = "zygote"
 	}
 	return domain
+}
+
+func NetworkName() string {
+	if os.Getenv(networkNameEnvVar) != "" {
+		return os.Getenv(networkNameEnvVar)
+	}
+	return defaultNetworkName
+}
+
+func IsHostNetwork() bool {
+	return NetworkName() == hostNetworkName
 }

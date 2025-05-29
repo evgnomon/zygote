@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -270,4 +271,28 @@ func (c *CertService) Sign(domainName []string, expiresAt time.Time, password st
 		return fmt.Errorf("failed to create p12 file: %v", err)
 	}
 	return nil
+}
+
+func TLSConfig(name string) *tls.Config {
+	s, err := Cert()
+	logger.FatalIfErr("Create cert service", err, utils.M{"name": name})
+	caCert := s.CaCertPublic()
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM([]byte(caCert)) {
+		logger.Fatal("Failed to append CA certificate", utils.M{"name": name})
+	}
+	tlsConfig := &tls.Config{
+		RootCAs:    caCertPool,
+		MinVersion: tls.VersionTLS12,
+		Certificates: func() []tls.Certificate {
+			cert, err := tls.LoadX509KeyPair(
+				s.FunctionCertFile(name),
+				s.FunctionKeyFile(name),
+			)
+			logger.FatalIfErr("Load client certificate", err, utils.M{"name": name})
+			return []tls.Certificate{cert}
+		}(),
+	}
+
+	return tlsConfig
 }
