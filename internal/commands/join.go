@@ -54,12 +54,12 @@ func JoinCommand() *cli.Command {
 			sn.Domain = c.String("domain")
 			sn.NetworkName = container.HostNetworkName
 			sn.DatabaseName = c.String("db")
-			h, err := utils.CalculateIndices(c.String("host"))
+			index, err := utils.GetClusterIndex(c.String("host"))
 			if err != nil {
 				return err
 			}
-			sn.ShardIndex = h.ShardIndex
-			sn.RepIndex = h.RepIndex
+			sn.ShardIndex = index.ShardIndex
+			sn.RepIndex = index.RepIndex
 			sn.Tenant = utils.TenantName()
 			sn.RootPassword = "root1234"
 			sn.NumShards = c.Int("num-shards")

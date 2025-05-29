@@ -113,6 +113,7 @@ func SpawnAndWait(ctx context.Context,
 	imageName, tenant string,
 	cmd []string,
 	portMap map[string]string,
+	volumeMap map[string]string,
 	networkName string,
 ) error {
 	config := &containertypes.Config{
@@ -129,6 +130,7 @@ func SpawnAndWait(ctx context.Context,
 	hostConfig := &containertypes.HostConfig{
 		AutoRemove:   true,
 		PortBindings: portBindings,
+		Binds:        volumeBinding(ctx, cli, volumeMap),
 	}
 	if networkName != "" {
 		hostConfig.NetworkMode = containertypes.NetworkMode(networkName)
@@ -176,6 +178,21 @@ func SpawnAndWait(ctx context.Context,
 	return nil
 }
 
+func volumeBinding(ctx context.Context, cli *client.Client, volumeMap map[string]string) []string {
+	var binds []string
+	for volumeName, mountPath := range volumeMap {
+		_, err := cli.VolumeInspect(ctx, volumeName)
+		if err != nil {
+			_, err := cli.VolumeCreate(ctx, volume.CreateOptions{Name: volumeName})
+			logger.FatalIfErr("Create volume", err, utils.M{"volumeName": volumeName})
+		}
+		bind := volumeName + ":" + mountPath
+		binds = append(binds, bind)
+	}
+
+	return binds
+}
+
 func SpawnWithInput(
 	name, tenant string,
 	cmd []string,
@@ -187,17 +204,6 @@ func SpawnWithInput(
 
 	cli, err := CreateClinet()
 	logger.FatalIfErr("Create Docker client", err)
-
-	var binds []string
-	for volumeName, mountPath := range volumeMap {
-		_, err := cli.VolumeInspect(ctx, volumeName)
-		if err != nil {
-			_, err := cli.VolumeCreate(ctx, volume.CreateOptions{Name: volumeName})
-			logger.FatalIfErr("Create volume", err, utils.M{"volumeName": volumeName})
-		}
-		bind := volumeName + ":" + mountPath
-		binds = append(binds, bind)
-	}
 
 	_, err = cli.NetworkInspect(ctx, networkName, networktypes.InspectOptions{})
 	if err != nil {
@@ -226,7 +232,7 @@ func SpawnWithInput(
 	hostConfig := &containertypes.HostConfig{
 		AutoRemove:   true,
 		PortBindings: portBindings,
-		Binds:        binds,
+		Binds:        volumeBinding(ctx, cli, volumeMap),
 	}
 	if networkName != "" {
 		hostConfig.NetworkMode = containertypes.NetworkMode(networkName)

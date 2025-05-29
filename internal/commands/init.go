@@ -26,7 +26,7 @@ func createNode(ctx context.Context, sn *db.SQLNode) {
 	mc.Domain = sn.Domain
 	mc.Tenant = sn.Tenant
 	mc.ShardIndex = sn.ShardIndex
-	mc.ReplicaIndex = sn.RepIndex
+	mc.RepIndex = sn.RepIndex
 	mc.NetworkName = sn.NetworkName
 	if mc.NetworkName != container.HostNetworkName {
 		mc.NetworkName = container.AppNetworkName()

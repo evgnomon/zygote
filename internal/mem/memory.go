@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/evgnomon/zygote/internal/container"
+	"github.com/evgnomon/zygote/pkg/cert"
 	"github.com/evgnomon/zygote/pkg/utils"
 )
 
@@ -15,18 +16,22 @@ const defaultShardSize = 3
 const hostNetworkName = "host"
 const redisImage = "redis:7.4.2"
 const defaultRedisPort = 6373
+const memShortName = "mem"
+const caCertPath = "/etc/certs/mem-ca-cert.pem"
+const certPath = "/etc/certs/mem-server-cert.pem"
+const keyCertPath = "/etc/certs/mem-server-key.pem"
 
 var logger = utils.NewLogger()
 var defaultRedisPortStr = strconv.Itoa(defaultRedisPort)
 
 type MemNode struct {
-	Tenant       string
-	Domain       string
-	NetworkName  string
-	ShardSize    int
-	NumShards    int
-	ShardIndex   int
-	ReplicaIndex int
+	Tenant      string
+	Domain      string
+	NetworkName string
+	ShardSize   int
+	NumShards   int
+	ShardIndex  int
+	RepIndex    int
 }
 
 func NewMemNode() *MemNode {
@@ -36,39 +41,89 @@ func NewMemNode() *MemNode {
 	return &m
 }
 
+func (m *MemNode) containerName(name string) string {
+	return utils.NodeContainer(name, m.Tenant, m.RepIndex, m.ShardIndex)
+}
+
+func (m *MemNode) sqlContainerName() string {
+	return m.containerName(memShortName)
+}
+
+func (m *MemNode) certVolName() string {
+	return fmt.Sprintf("%s-conf-cert", m.sqlContainerName())
+}
+
+func (m *MemNode) makeCertsVolume() {
+	c, err := cert.Cert()
+	logger.FatalIfErr("Create cert service", err)
+
+	container.Vol(m.Tenant, c.CaCertPublic(), m.certVolName(),
+		"/etc/certs", "mem-ca-cert.pem", container.AppNetworkName())
+	container.Vol(m.Tenant, c.FunctionCertPublic(m.sqlContainerName()), m.certVolName(),
+		"/etc/certs", "mem-server-cert.pem", container.AppNetworkName())
+	container.Vol(m.Tenant, c.FunctionCertPrivate(m.sqlContainerName()), m.certVolName(),
+		"/etc/certs", "mem-server-key.pem", container.AppNetworkName())
+}
+
 func (m *MemNode) CreateReplica(ctx context.Context) {
+	m.makeCertsVolume()
 	config := container.ContainerConfig{
-		Name:        utils.NodeContainer("mem", m.Tenant, m.ReplicaIndex, m.ShardIndex),
+		Name:        utils.NodeContainer("mem", m.Tenant, m.RepIndex, m.ShardIndex),
 		NetworkName: m.NetworkName,
-		Image:       redisImage, // Assuming redisImage is the image used
+		Image:       redisImage,
 		HealthCommand: []string{
 			"CMD",
 			"redis-cli",
+			"--tls",
 			"-p",
 			defaultRedisPortStr,
-			"ping",
-			"--raw",
-			"incr",
+			"--cert",
+			certPath,
+			"--key",
+			keyCertPath,
+			"--cacert",
+			caCertPath,
 			"ping",
 		},
 		Bindings: []string{
-			fmt.Sprintf("%s-data:/var/lib/redis", utils.NodeContainer("mem", m.Tenant, m.ReplicaIndex, m.ShardIndex)),
+			fmt.Sprintf("%s-data:/var/lib/redis", utils.NodeContainer("mem", m.Tenant, m.RepIndex, m.ShardIndex)),
+			fmt.Sprintf("%s:/etc/certs", m.certVolName()),
 		},
 		Caps:    []string{},
 		EnvVars: []string{},
 		Cmd: []string{
 			"redis-server",
 			"--port",
+			"0",
+			"--tls-port",
 			defaultRedisPortStr,
 			"--cluster-enabled",
 			"yes",
 			"--cluster-node-timeout",
 			"5000",
+			"--tls-cert-file",
+			certPath,
+			"--tls-key-file",
+			keyCertPath,
+			"--tls-ca-cert-file",
+			caCertPath,
+			"--tls-auth-clients",
+			"yes",
+			"--tls-replication",
+			"yes",
+			"--tls-cluster",
+			"yes",
+			"--tls-protocols",
+			"TLSv1.2 TLSv1.3",
+			"--tls-ciphers",
+			"HIGH:!aNULL:!MD5",
+			"--tls-ciphersuites",
+			"TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256",
 			"--appendonly",
 			"yes",
 		},
 		Ports: map[int]int{
-			defaultRedisPort + m.ReplicaIndex*10 + m.ShardIndex*100: defaultRedisPort,
+			defaultRedisPort + m.RepIndex*10 + m.ShardIndex*100: defaultRedisPort,
 		},
 	}
 	err := config.StartContainer(ctx)
@@ -80,7 +135,18 @@ func (m *MemNode) CreateReplica(ctx context.Context) {
 
 func (m *MemNode) createRedisClusterCommand() []string {
 	// Base command parts
-	cmd := []string{"redis-cli", "--cluster", "create"}
+	cmd := []string{
+		"redis-cli",
+		"--tls",
+		"--cert",
+		certPath,
+		"--key",
+		keyCertPath,
+		"--cacert",
+		caCertPath,
+		"--cluster",
+		"create",
+	}
 	// Generate shard hostnames based on shardSize
 	for repIndex := 0; repIndex < m.ShardSize; repIndex++ {
 		for shardIndex := 0; shardIndex < m.NumShards; shardIndex++ {
@@ -112,10 +178,10 @@ func (m *MemNode) createRedisClusterCommand() []string {
 }
 
 func (m *MemNode) Init(ctx context.Context) {
-	if m.ReplicaIndex != 0 || m.ShardIndex != 0 {
+	if m.RepIndex != 0 || m.ShardIndex != 0 {
 		return
 	}
-	logger.Debug("Creating Redis cluster", utils.M{"replicaIndex": m.ReplicaIndex, "shardIndex": m.ShardIndex})
+	logger.Debug("Creating Redis cluster", utils.M{"replicaIndex": m.RepIndex, "shardIndex": m.ShardIndex})
 	portMap := map[string]string{
 		defaultRedisPortStr: defaultRedisPortStr,
 	}
@@ -135,7 +201,11 @@ func (m *MemNode) Init(ctx context.Context) {
 
 	// Use exponential backoff for container creation
 	err = backoffConfig.Retry(ctx, func() error {
-		return container.SpawnAndWait(ctx, client, redisImage, m.Tenant, m.createRedisClusterCommand(), portMap, m.NetworkName)
+		return container.SpawnAndWait(ctx, client, redisImage, m.Tenant,
+			m.createRedisClusterCommand(), portMap,
+			map[string]string{m.certVolName(): "/etc/certs"},
+			m.NetworkName,
+		)
 	})
 	logger.FatalIfErr("Create redis cluster", err)
 }

@@ -9,10 +9,13 @@ import (
 	"time"
 
 	"github.com/evgnomon/zygote/pkg/http"
+	"github.com/evgnomon/zygote/pkg/mem"
+	"github.com/evgnomon/zygote/pkg/utils"
 	"github.com/redis/go-redis/v9"
 )
 
 const redisTimeout = 5 * time.Second
+const targetReadPort = 6373
 
 type RedisQueryRequest struct {
 	Query []string `json:"query" form:"query"`
@@ -31,11 +34,18 @@ type RedisConfig struct {
 }
 
 func NewRedisQueryController(config *RedisConfig) (*RedisQueryController, error) {
+	// It is enough to connect to two endpoints, the rest will be discovered
+	ep, err := mem.MemEndpoints(utils.NetworkName(), utils.DomainName(), 2, targetReadPort)
+	logger.FatalIfErr("Get endpoints", err)
 	if config == nil {
 		config = &RedisConfig{
 			// The rest of nodes are discovered by the client
-			Addrs: []string{"shard-a.zygote.run:6373", "shard-b.zygote.run:6373", "shard-c.zygote.run:6373"},
+			Addrs: []string{},
 		}
+		for _, e := range ep {
+			config.Addrs = append(config.Addrs, e.Endpoint())
+		}
+		logger.Debug("Redis endpoints", utils.M{"endpoints": config.Addrs})
 	}
 
 	rc := &RedisQueryController{
@@ -73,10 +83,10 @@ func (rc *RedisQueryController) ensureConnection() error {
 		rc.client = nil
 	}
 
-	client := redis.NewClusterClient(&redis.ClusterOptions{
-		Addrs:    rc.config.Addrs,
-		Password: rc.config.Password,
-	})
+	client, err := mem.Client()
+	if err != nil {
+		return err
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), redisTimeout)
 	defer cancel()
