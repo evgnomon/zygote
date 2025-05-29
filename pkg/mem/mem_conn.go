@@ -2,7 +2,6 @@ package mem
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/evgnomon/zygote/pkg/cert"
 	"github.com/evgnomon/zygote/pkg/utils"
@@ -10,7 +9,6 @@ import (
 )
 
 const defaultReplica = 0
-const redisTimeout = 5 * time.Second
 const targetReadPort = 6373
 
 var logger = utils.NewLogger()
@@ -38,9 +36,8 @@ func MemEndpoints(network, domain string, numShards,
 	for shardIndex := 0; shardIndex < numShards; shardIndex++ {
 		endpoints[shardIndex] = MemEndpoint{
 			Index: shardIndex,
-			// Host:  utils.NodeHost(network, domain, defaultReplica, shardIndex),
-			Host: "my.zygote.run",
-			Port: utils.NodePort(network, targetPort, defaultReplica, shardIndex),
+			Host:  utils.NodeHost(network, domain, defaultReplica, shardIndex),
+			Port:  utils.NodePort(network, targetPort, defaultReplica, shardIndex),
 		}
 	}
 	return endpoints, nil
@@ -49,7 +46,7 @@ func MemEndpoints(network, domain string, numShards,
 func Client() (*redis.ClusterClient, error) {
 	tlsConfig := cert.TLSConfig(utils.HostName())
 	if !utils.IsHostNetwork() {
-		tlsConfig.InsecureSkipVerify = true //nolint:gosec
+		tlsConfig.InsecureSkipVerify = true
 	}
 	ep, err := MemEndpoints(utils.NetworkName(), utils.DomainName(), 2, targetReadPort)
 

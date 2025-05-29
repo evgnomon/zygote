@@ -41,8 +41,8 @@ func NewMemNode() *MemNode {
 	return &m
 }
 
-func (s *MemNode) containerName(name string) string {
-	return utils.NodeContainer(name, s.Tenant, s.RepIndex, s.ShardIndex)
+func (m *MemNode) containerName(name string) string {
+	return utils.NodeContainer(name, m.Tenant, m.RepIndex, m.ShardIndex)
 }
 
 func (m *MemNode) sqlContainerName() string {
@@ -206,7 +206,6 @@ func (m *MemNode) Init(ctx context.Context) {
 			map[string]string{m.certVolName(): "/etc/certs"},
 			m.NetworkName,
 		)
-
 	})
 	logger.FatalIfErr("Create redis cluster", err)
 }
