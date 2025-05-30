@@ -45,6 +45,11 @@ func CertCommand() *cli.Command {
 						Usage:   "Domain address",
 						Value:   cli.NewStringSlice(utils.User()),
 					},
+					&cli.StringSliceFlag{
+						Name:  "ip",
+						Usage: "IP address",
+						Value: cli.NewStringSlice("127.0.0.1"),
+					},
 					&cli.StringFlag{
 						Name:    "password",
 						Aliases: []string{"p"},
@@ -61,7 +66,12 @@ func CertCommand() *cli.Command {
 						return fmt.Errorf("name is required")
 					}
 
-					return cs.Sign(c.StringSlice("name"), time.Now().AddDate(1, 0, 0), c.String("password"))
+					return cs.Sign(
+						c.StringSlice("name"),
+						c.StringSlice("ip"),
+						time.Now().AddDate(1, 0, 0),
+						c.String("password"),
+					)
 				},
 			},
 		},

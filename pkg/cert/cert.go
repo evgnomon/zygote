@@ -177,7 +177,7 @@ func (c *CertService) MakeRootCert(expiresAt time.Time) error {
 	return nil
 }
 
-func (c *CertService) Sign(domainName []string, expiresAt time.Time, password string) error {
+func (c *CertService) Sign(domainName, ipAddresses []string, expiresAt time.Time, password string) error {
 	caKeyPEM, err := os.ReadFile(filepath.Join(c.CaCertDir(), "ca_key.pem"))
 	if err != nil {
 		return err
@@ -209,7 +209,6 @@ func (c *CertService) Sign(domainName []string, expiresAt time.Time, password st
 	}
 	// Parse IP addresses
 	var ips []net.IP
-	ipAddresses := []string{"127.0.0.1"}
 	for _, ipStr := range ipAddresses {
 		ip := net.ParseIP(ipStr)
 		if ip == nil {

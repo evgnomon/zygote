@@ -21,8 +21,16 @@ func DeinitCommand() *cli.Command {
 				Aliases: []string{"v"},
 				Usage:   "Remove volumes associated with the containers",
 			},
+			&cli.BoolFlag{
+				Name:    "yes",
+				Aliases: []string{"y"},
+				Usage:   "Remove volumes associated with the containers",
+			},
 		},
 		Action: func(c *cli.Context) error {
+			if !c.Bool("yes") && !utils.GetYesNoInput("This will remove all containers and optionally volumes.") {
+				return nil
+			}
 			for _, v := range container.List() {
 				if strings.HasPrefix(v.Name, fmt.Sprintf("/%s-", utils.TenantName())) {
 					container.RemoveContainer(v.ID)
