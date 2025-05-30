@@ -64,6 +64,22 @@
     - z_deploy
     - never
 
+- name: Add shards to inventory
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - evgnomon.catamaran
+  roles:
+    - name: z_sign
+      vars:
+        token: mem
+    - name: z_sign
+      vars:
+        token: sql
+  tags:
+    - z_deploy
+    - never
+
 - name: Deploy ZCore on front
   hosts:
     - front

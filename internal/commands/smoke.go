@@ -59,12 +59,12 @@ func SmokerCommand() *cli.Command {
 			}()
 
 			defer func() {
-				err = utils.Script([][]string{{"sudo", zygotePath, "deinit", "-v"}})
+				err = utils.Script([][]string{{"sudo", zygotePath, "deinit", "-v", "-y"}})
 				logger.FatalIfErr("Deinit zygote", err)
 			}()
 			err = utils.Script([][]string{
 				{"rm", "-rf", "./sqls"},
-				{"sudo", zygotePath, "deinit", "-v"},
+				{"sudo", zygotePath, "deinit", "-v", "-y"},
 				{"sudo", zygotePath, "init"},
 				{"sudo", "-K"},
 				{zygotePath, "gen", "db", "--name=smokers"},
