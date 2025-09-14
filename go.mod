@@ -16,8 +16,7 @@ require (
 	github.com/redis/go-redis/v9 v9.7.3
 	github.com/rs/zerolog v1.34.0
 	github.com/urfave/cli/v2 v2.27.6
-	golang.org/x/crypto v0.36.0
-	golang.org/x/term v0.31.0
+	golang.org/x/crypto v0.42.0
 )
 
 require github.com/moby/sys/atomicwriter v0.1.0 // indirect
@@ -56,8 +55,8 @@ require (
 	go.opentelemetry.io/otel/sdk v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
-	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/net v0.43.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
