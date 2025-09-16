@@ -76,6 +76,9 @@
     - name: z_sign
       vars:
         token: sql
+    - name: z_sign
+      vars:
+        token: fb
   tags:
     - z_deploy
     - never
