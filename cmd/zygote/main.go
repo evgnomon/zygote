@@ -22,29 +22,23 @@ func main() {
 	logger := utils.NewLogger()
 
 	app := &cli.App{
-		Action: func(_ *cli.Context) error {
-			cc := commands.CheckCommand()
-			return cc.Action(nil)
-		},
+		// Action: func(_ *cli.Context) error {
+		// 	cc := commands.CheckCommand()
+		// 	return cc.Action(nil)
+		// },
 		Commands: []*cli.Command{
 			commands.BlueprintCommand(),
-			commands.BuildCommand(),
+			commands.YCommand(),
 			commands.CCommand(),
 			commands.CallCommand(),
 			commands.CertCommand(),
-			commands.CheckCommand(),
 			commands.DeinitCommand(),
-			commands.GenerateCommand(),
 			commands.InitCommand(),
 			commands.JoinCommand(),
 			commands.MemCommand(),
-			commands.MigrateCommand(),
 			commands.OpenActions(),
 			commands.OpenDiffs(),
 			commands.OpenPackages(),
-			commands.QCommand(),
-			commands.SQLCommand(),
-			commands.SmokerCommand(),
 			commands.VaultCommand(),
 		},
 	}

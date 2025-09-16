@@ -20,8 +20,6 @@ var logger = utils.NewLogger()
 func createNode(ctx context.Context, sn *db.SQLNode) {
 	n := container.NewNetworkConfig(sn.NetworkName)
 	n.Ensure(ctx)
-	err := sn.StartSQLContainers(ctx)
-	logger.FatalIfErr("Make SQL node", err)
 	mc := mem.NewMemNode()
 	mc.Domain = sn.Domain
 	mc.Tenant = sn.Tenant
