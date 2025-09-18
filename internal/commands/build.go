@@ -10,8 +10,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// BuildCommand builds the current project.
-func BuildCommand() *cli.Command {
+// YCommand builds the current project.
+func YCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "build",
 		Aliases: []string{"y"},

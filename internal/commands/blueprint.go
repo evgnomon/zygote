@@ -14,7 +14,7 @@ func BlueprintCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "blueprint",
 		Aliases: []string{"x"},
-		Usage:   "Setup this machine with Blueprint. Upgrade the machine if it is alreadt been setup",
+		Usage:   "Setup this machine with Blueprint. Upgrade the machine if it is already been setup",
 		Action: func(_ *cli.Context) error {
 			currentDir, err := os.Getwd()
 			if err != nil {
