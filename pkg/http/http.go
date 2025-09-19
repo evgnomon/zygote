@@ -28,8 +28,8 @@ func NewHTTPTransportConfig() *HTTPTransportConfig {
 	logger.FatalIfErr("Create cert service", err)
 	return &HTTPTransportConfig{
 		caCertFile:   cs.CaCertFile(),
-		funcCertFile: cs.FunctionCertFile(utils.User()),
-		funcKeyFile:  cs.FunctionKeyFile(utils.User()),
+		funcCertFile: cs.FunctionCertPath(utils.User()),
+		funcKeyFile:  cs.FunctionKeyPath(utils.User()),
 	}
 }
 
@@ -37,9 +37,9 @@ func NewHTTPTransportConfigForUserHost(userName, domain string) *HTTPTransportCo
 	cs, err := cert.Cert()
 	logger.FatalIfErr("Create cert service", err)
 	return &HTTPTransportConfig{
-		caCertFile:   cs.CaCertFileForDomain(domain),
-		funcCertFile: cs.FunctionCertFile(userName),
-		funcKeyFile:  cs.FunctionKeyFile(userName),
+		caCertFile:   cs.CaCertPathForDomain(domain),
+		funcCertFile: cs.FunctionCertPath(userName),
+		funcKeyFile:  cs.FunctionKeyPath(userName),
 	}
 }
 

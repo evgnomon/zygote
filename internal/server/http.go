@@ -106,8 +106,8 @@ func (s *Server) tlsConfig() (*tls.Config, error) {
 	} else {
 		// Use local certificates
 		serverCert, err := tls.LoadX509KeyPair(
-			s.cs.FunctionCertFile(s.hostName),
-			s.cs.FunctionKeyFile(s.hostName),
+			s.cs.FunctionCertPath(s.hostName),
+			s.cs.FunctionKeyPath(s.hostName),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load server certificate: %w", err)
@@ -140,8 +140,8 @@ func (s *Server) Listen() error {
 		err = httpServer.ListenAndServeTLS("", "")
 	} else {
 		err = httpServer.ListenAndServeTLS(
-			s.cs.FunctionCertFile(s.hostName),
-			s.cs.FunctionKeyFile(s.hostName),
+			s.cs.FunctionCertPath(s.hostName),
+			s.cs.FunctionKeyPath(s.hostName),
 		)
 	}
 	if err != nil {

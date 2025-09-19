@@ -52,9 +52,9 @@ func QCommand() *cli.Command {
 
 			// Get user and construct certificate paths using CertService
 			user := c.String("user")
-			certPath := certService.FunctionCertFile(user)
+			certPath := certService.FunctionCertPath(user)
 			keyPath := filepath.Join(certService.FunctionsCertDir(user), fmt.Sprintf("%s_key.pem", user))
-			caCertPath := certService.CaCertFileForDomain(server)
+			caCertPath := certService.CaCertPathForDomain(server)
 
 			// If curl flag is set, print the curl command and return
 			if c.Bool("curl") {

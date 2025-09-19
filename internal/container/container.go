@@ -28,6 +28,7 @@ const (
 	defaultContainerStartTimeout = 120 * time.Second
 	defaultNetworkName           = "mynet"
 	dockerVersion                = "1.41"
+	dockerDirPermissions         = 0700
 	networkNameEnvVar            = "DOCKER_NETWORK_NAME"
 )
 
@@ -454,6 +455,13 @@ func GetAuthString(image string) string {
 	logger.FatalIfErr("Get current user", err)
 
 	dockerConfigPath := usr.HomeDir + "/.docker/config.json"
+	// Create the file if not exists
+	err = os.MkdirAll(usr.HomeDir+"/.docker", dockerDirPermissions)
+	logger.FatalIfErr("Create .docker directory", err)
+	if _, err := os.Stat(dockerConfigPath); os.IsNotExist(err) {
+		_, err = os.Create(dockerConfigPath)
+		logger.FatalIfErr("Create Docker config file", err)
+	}
 	file, err := os.ReadFile(dockerConfigPath)
 	logger.FatalIfErr("Read Docker config file", err)
 	var dockerConfig DockerConfig

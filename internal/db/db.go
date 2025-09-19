@@ -359,9 +359,9 @@ func (s *SQLNode) makeCertsVolume() {
 
 	container.Vol(s.Tenant, c.CaCertPublic(), s.certVolName(),
 		"/etc/certs", "my-ca-cert.pem", container.AppNetworkName())
-	container.Vol(s.Tenant, c.FunctionCertPublic(s.sqlContainerName()), s.certVolName(),
+	container.Vol(s.Tenant, c.FunctionCert(s.sqlContainerName()), s.certVolName(),
 		"/etc/certs", "my-server-cert.pem", container.AppNetworkName())
-	container.Vol(s.Tenant, c.FunctionCertPrivate(s.sqlContainerName()), s.certVolName(),
+	container.Vol(s.Tenant, c.FunctionKey(s.sqlContainerName()), s.certVolName(),
 		"/etc/certs", "my-server-key.pem", container.AppNetworkName())
 }
 

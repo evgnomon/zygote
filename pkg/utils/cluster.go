@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 const defaultNetworkName = "mynet"
@@ -59,6 +60,43 @@ func HostName() string {
 		domain = myZygoteDomain
 	}
 	return domain
+}
+
+// NodeType returns the type of the node based on the environment variable Z_HOST.
+func NodeType() string {
+	host := HostName()
+	if host == myZygoteDomain {
+		return ""
+	}
+	parts := strings.Split(host, ".")
+	if len(parts) == 0 {
+		logger.FatalIfErr("Parse node type from hostname", fmt.Errorf("invalid hostname format"))
+		return ""
+	}
+	parts = strings.Split(parts[0], "-")
+	if len(parts) == 0 {
+		logger.FatalIfErr("Parse node type from hostname", fmt.Errorf("invalid hostname format"))
+		return ""
+	}
+	if parts[0] == "" {
+		logger.FatalIfErr("Parse node type from hostname", fmt.Errorf("invalid hostname format"))
+	}
+	return parts[0]
+}
+
+func NodeSuffix() string {
+	host := HostName()
+	var b string
+	var ok bool
+	if b, ok = strings.CutSuffix(host, "."+DomainName()); !ok {
+		return ""
+	}
+	if !strings.Contains(b, "-") {
+		return b
+	}
+	parts := strings.Split(b, "-")
+	result := strings.Join(parts[1:], "-")
+	return result
 }
 
 func TenantName() string {

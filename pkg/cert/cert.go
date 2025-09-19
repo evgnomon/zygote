@@ -69,15 +69,29 @@ func (c *CertService) CaCertFile() string {
 	return filepath.Join(c.CaCertDir(), "ca_cert.pem")
 }
 
-func (c *CertService) FunctionCertPublic(name string) string {
-	a, err := os.ReadFile(c.FunctionCertFile(name))
-	logger.FatalIfErr("Read function cert file", err)
+func (c *CertService) FunctionCert(name string) string {
+	logger.Info("Get function cert", utils.M{"name": name})
+	f := c.FunctionCertFileByContainer(name)
+	c.EnsureFunctionCert(name)
+	a, err := os.ReadFile(f)
+	logger.FatalIfErr("Read function cert file", err, utils.M{"file": f})
 	return string(a)
 }
 
-func (c *CertService) FunctionCertPrivate(name string) string {
-	a, err := os.ReadFile(c.FunctionKeyFile(name))
-	logger.FatalIfErr("Read function key file", err)
+func (c *CertService) EnsureFunctionCert(name string) {
+	f := c.FunctionCertFileByContainer(name)
+	if _, err := os.Stat(f); os.IsNotExist(err) {
+		logger.Info("Ensure function cert", utils.M{"name": name})
+		err := c.Sign([]string{ContainerCertName(name)}, []string{"127.0.0.1"}, time.Now().AddDate(1, 0, 0), "")
+		logger.FatalIfErr("Auto generate function cert", err, utils.M{"file": f})
+	}
+}
+
+func (c *CertService) FunctionKey(name string) string {
+	c.EnsureFunctionCert(name)
+	f := c.FunctionKeyFileByContainer(name)
+	a, err := os.ReadFile(f)
+	logger.FatalIfErr("Read function key file", err, utils.M{"file": f})
 	return string(a)
 }
 
@@ -89,7 +103,7 @@ func (c *CertService) CaCertPublic() string {
 }
 
 // Get ca cert file path
-func (c *CertService) CaCertFileForDomain(domain string) string {
+func (c *CertService) CaCertPathForDomain(domain string) string {
 	f := filepath.Join(c.CaCertDir(), fmt.Sprintf("%s.pem", domain))
 	if _, err := os.Stat(f); os.IsNotExist(err) {
 		return c.CaCertFile()
@@ -108,11 +122,66 @@ func (c *CertService) FunctionsCertDir(name string) string {
 	return p
 }
 
-func (c *CertService) FunctionCertFile(name string) string {
+func ContainerCertName(containerName string) string {
+	if utils.DomainName() == "my.zygote.run" {
+		logger.Info("Using container name as cert name for my.zygote.run", utils.M{"container": containerName})
+		return containerName
+	}
+	domain := utils.DomainName()
+	node_type := utils.NodeType()
+	suffix := utils.NodeSuffix()
+	if suffix == "" {
+		if node_type == "" {
+			return containerName + "." + domain
+		}
+		return fmt.Sprintf("%s-%s.%s", node_type, containerName, domain)
+	}
+	name := fmt.Sprintf("%s-%s-%s.%s", node_type, containerName, suffix, domain)
+	return name
+}
+
+func (c *CertService) FunctionCertFileByContainer(containerName string) string {
+	logger.Info("Get function cert by container", utils.M{"container": containerName})
+	return c.FunctionCertPath(ContainerCertName(containerName))
+}
+
+func (c *CertService) FunctionCertFileByHost() string {
+	domain := utils.DomainName()
+	node_type := utils.NodeType()
+	suffix := utils.NodeSuffix()
+	if suffix == "" {
+		if node_type == "" {
+			return c.FunctionCertPath(domain)
+		}
+		return c.FunctionCertPath(node_type + "." + domain)
+	}
+	name := fmt.Sprintf("%s-%s.%s", node_type, suffix, domain)
+	return c.FunctionCertPath(name)
+}
+
+func (c *CertService) FunctionCertPath(name string) string {
 	return filepath.Join(c.FunctionsCertDir(name), fmt.Sprintf("%s_cert.pem", name))
 }
 
-func (c *CertService) FunctionKeyFile(name string) string {
+func (c *CertService) FunctionKeyFileByContainer(containerName string) string {
+	return c.FunctionKeyPath(ContainerCertName(containerName))
+}
+
+func (c *CertService) FunctionKeyFileByHost() string {
+	domain := utils.DomainName()
+	node_type := utils.NodeType()
+	suffix := utils.NodeSuffix()
+	if suffix == "" {
+		if node_type == "" {
+			return c.FunctionKeyPath(domain)
+		}
+		return c.FunctionKeyPath(node_type + "." + domain)
+	}
+	name := fmt.Sprintf("%s-%s.%s", node_type, suffix, domain)
+	return c.FunctionKeyPath(name)
+}
+
+func (c *CertService) FunctionKeyPath(name string) string {
 	return filepath.Join(c.FunctionsCertDir(name), fmt.Sprintf("%s_key.pem", name))
 }
 
@@ -178,6 +247,7 @@ func (c *CertService) MakeRootCert(expiresAt time.Time) error {
 }
 
 func (c *CertService) Sign(domainName, ipAddresses []string, expiresAt time.Time, password string) error {
+	logger.Info("Signing certificate", utils.M{"domain": domainName, "ip": ipAddresses})
 	caKeyPEM, err := os.ReadFile(filepath.Join(c.CaCertDir(), "ca_key.pem"))
 	if err != nil {
 		return err
@@ -280,13 +350,14 @@ func TLSConfig(name string) *tls.Config {
 	if !caCertPool.AppendCertsFromPEM([]byte(caCert)) {
 		logger.Fatal("Failed to append CA certificate", utils.M{"name": name})
 	}
+	s.EnsureFunctionCert(name)
 	tlsConfig := &tls.Config{
 		RootCAs:    caCertPool,
 		MinVersion: tls.VersionTLS12,
 		Certificates: func() []tls.Certificate {
 			cert, err := tls.LoadX509KeyPair(
-				s.FunctionCertFile(name),
-				s.FunctionKeyFile(name),
+				s.FunctionCertPath(ContainerCertName(name)),
+				s.FunctionKeyPath(ContainerCertName(name)),
 			)
 			logger.FatalIfErr("Load client certificate", err, utils.M{"name": name})
 			return []tls.Certificate{cert}

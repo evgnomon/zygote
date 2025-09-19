@@ -44,7 +44,7 @@
     - z_deploy
     - never
 
-- name: Deploy ZCore on shards
+- name: Deploy SQL certificates
   hosts:
     - shards
   gather_facts: false
@@ -53,32 +53,36 @@
   roles:
     - role: z_ca_deploy
       vars:
-        function_name: "{{ z_user }}-sql-{{ z_replica_index }}{{ z_shard_suffix }}"
-    - role: z_ca_deploy
-      vars:
-        function_name: "{{ z_user }}-mem-{{ z_replica_index }}{{ z_shard_suffix }}"
-    - role: z_service
-      vars:
-        z_service_name: "zcore"
+        function_name: "sql"
   tags:
     - z_deploy
     - never
 
-- name: Add shards to inventory
-  hosts: localhost
+
+- name: Deploy MEM certificates
+  hosts:
+    - shards
   gather_facts: false
   collections:
     - evgnomon.catamaran
   roles:
-    - name: z_sign
+    - role: z_ca_deploy
       vars:
-        token: mem
-    - name: z_sign
+        function_name: "mem"
+  tags:
+    - z_deploy
+    - never
+
+- name: Deploy ZCore on shards
+  hosts:
+    - shards
+  gather_facts: false
+  collections:
+    - evgnomon.catamaran
+  roles:
+    - role: z_service
       vars:
-        token: sql
-    - name: z_sign
-      vars:
-        token: fb
+        z_service_name: "zcore"
   tags:
     - z_deploy
     - never
@@ -94,6 +98,32 @@
       vars:
         z_service_name: "zcore"
         z_use_domain_cert: true
+  tags:
+    - z_deploy
+    - never
+
+- name: Deploy Fluent-bit on front
+  hosts:
+    - front
+    - shards
+  gather_facts: false
+  collections:
+    - evgnomon.catamaran
+  roles:
+    - role: ensure_fb
+  tags:
+    - z_deploy
+    - never
+
+- name: Deploy Node Exporter on front
+  hosts:
+    - front
+    - shards
+  gather_facts: false
+  collections:
+    - evgnomon.catamaran
+  roles:
+    - role: ensure_node_exporter
   tags:
     - z_deploy
     - never

@@ -45,12 +45,12 @@ func (m *MemNode) containerName(name string) string {
 	return utils.NodeContainer(name, m.Tenant, m.RepIndex, m.ShardIndex)
 }
 
-func (m *MemNode) sqlContainerName() string {
+func (m *MemNode) memContainerName() string {
 	return m.containerName(memShortName)
 }
 
 func (m *MemNode) certVolName() string {
-	return fmt.Sprintf("%s-conf-cert", m.sqlContainerName())
+	return fmt.Sprintf("%s-conf-cert", m.memContainerName())
 }
 
 func (m *MemNode) makeCertsVolume() {
@@ -59,9 +59,9 @@ func (m *MemNode) makeCertsVolume() {
 
 	container.Vol(m.Tenant, c.CaCertPublic(), m.certVolName(),
 		"/etc/certs", "mem-ca-cert.pem", container.AppNetworkName())
-	container.Vol(m.Tenant, c.FunctionCertPublic(m.sqlContainerName()), m.certVolName(),
+	container.Vol(m.Tenant, c.FunctionCert(m.memContainerName()), m.certVolName(),
 		"/etc/certs", "mem-server-cert.pem", container.AppNetworkName())
-	container.Vol(m.Tenant, c.FunctionCertPrivate(m.sqlContainerName()), m.certVolName(),
+	container.Vol(m.Tenant, c.FunctionKey(m.memContainerName()), m.certVolName(),
 		"/etc/certs", "mem-server-key.pem", container.AppNetworkName())
 }
 
