@@ -1,3 +1,7 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 // Package commands contains all available commands.
 package commands
 
@@ -32,7 +36,7 @@ func CertCommand() *cli.Command {
 					if err != nil {
 						return err
 					}
-					return cs.MakeRootCert(time.Now().AddDate(0, 0, c.Int("days")))
+					return cs.MakeCaCert(time.Now().AddDate(0, 0, c.Int("days")))
 				},
 			},
 			{

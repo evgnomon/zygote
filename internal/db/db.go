@@ -1,3 +1,7 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 package db
 
 import (
@@ -357,11 +361,11 @@ func (s *SQLNode) makeCertsVolume() {
 	c, err := cert.Cert()
 	logger.FatalIfErr("Create cert service", err)
 
-	container.Vol(s.Tenant, c.CaCertPublic(), s.certVolName(),
+	container.Vol(s.Tenant, c.Ca(), s.certVolName(),
 		"/etc/certs", "my-ca-cert.pem", container.AppNetworkName())
-	container.Vol(s.Tenant, c.FunctionCert(s.sqlContainerName()), s.certVolName(),
+	container.Vol(s.Tenant, c.ContainerCert(s.sqlContainerName()), s.certVolName(),
 		"/etc/certs", "my-server-cert.pem", container.AppNetworkName())
-	container.Vol(s.Tenant, c.FunctionKey(s.sqlContainerName()), s.certVolName(),
+	container.Vol(s.Tenant, c.ContainerKey(s.sqlContainerName()), s.certVolName(),
 		"/etc/certs", "my-server-key.pem", container.AppNetworkName())
 }
 
@@ -682,7 +686,7 @@ func (s *SQLNode) connectionString(dbName string) string {
 }
 
 func (s *SQLNode) GetDB() (*sql.DB, error) {
-	tables.RegisterTLSConfig("provisioner")
+	tables.RegisterTLSConfig(utils.ContainerCertName(utils.ContainerName("provisioner")))
 	dsn := s.connectionString(s.DatabaseName)
 	db, err := sql.Open(defaultConnDatabaseName, dsn)
 	if err != nil {

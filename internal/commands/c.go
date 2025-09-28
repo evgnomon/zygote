@@ -1,3 +1,7 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 // Package commands contains all available commands.
 package commands
 
@@ -53,19 +57,18 @@ func CCommand() *cli.Command {
 			p := controller.RedisQueryRequest{
 				Query: parts,
 			}
-			return sendAndPrint(url, server, c.String("user"), p)
+			return sendAndPrint(url, c.String("user"), p)
 		},
 	}
 }
 
-func sendAndPrint(url, server, user string, p any) error {
+func sendAndPrint(url, user string, p any) error {
 	// json.Marshal will handle all necessary escaping
 	payload, err := json.Marshal(p)
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %v", err)
 	}
-	domain := strings.Split(server, ":")[0]
-	t := http.NewHTTPTransportConfigForUserHost(user, domain)
+	t := http.NewHTTPTransportConfigForUser(user)
 
 	client, err := t.Client()
 	if err != nil {

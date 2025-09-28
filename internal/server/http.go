@@ -1,3 +1,7 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 package server
 
 import (
@@ -55,9 +59,10 @@ func NewServer() (*Server, error) {
 
 	return s, nil
 }
+
 func (s *Server) tlsConfig() (*tls.Config, error) {
 	// Load client CA certificate for client authentication
-	clientCACert, err := os.ReadFile(s.cs.CaCertFile())
+	clientCACert, err := os.ReadFile(s.cs.CaPath())
 	if err != nil {
 		return nil, fmt.Errorf("failed to read client CA certificate: %w", err)
 	}
@@ -83,7 +88,7 @@ func (s *Server) tlsConfig() (*tls.Config, error) {
 		certManager := autocert.Manager{
 			Prompt:     autocert.AcceptTOS,
 			HostPolicy: hostPolicies,
-			Cache:      autocert.DirCache(s.cs.FunctionsCertDir(s.hostName)),
+			Cache:      autocert.DirCache(s.cs.CertDir(s.hostName)),
 		}
 		tlsConfig.GetCertificate = certManager.GetCertificate
 
@@ -106,8 +111,8 @@ func (s *Server) tlsConfig() (*tls.Config, error) {
 	} else {
 		// Use local certificates
 		serverCert, err := tls.LoadX509KeyPair(
-			s.cs.FunctionCertPath(s.hostName),
-			s.cs.FunctionKeyPath(s.hostName),
+			s.cs.CertPath(s.hostName),
+			s.cs.KeyPath(s.hostName),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load server certificate: %w", err)
@@ -140,8 +145,8 @@ func (s *Server) Listen() error {
 		err = httpServer.ListenAndServeTLS("", "")
 	} else {
 		err = httpServer.ListenAndServeTLS(
-			s.cs.FunctionCertPath(s.hostName),
-			s.cs.FunctionKeyPath(s.hostName),
+			s.cs.CertPath(s.hostName),
+			s.cs.KeyPath(s.hostName),
 		)
 	}
 	if err != nil {

@@ -1,3 +1,7 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 // Package commands contains all available commands.
 package commands
 
@@ -5,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/evgnomon/zygote/internal/controller"
@@ -52,9 +55,9 @@ func QCommand() *cli.Command {
 
 			// Get user and construct certificate paths using CertService
 			user := c.String("user")
-			certPath := certService.FunctionCertPath(user)
-			keyPath := filepath.Join(certService.FunctionsCertDir(user), fmt.Sprintf("%s_key.pem", user))
-			caCertPath := certService.CaCertPathForDomain(server)
+			certPath := certService.CertPath(user)
+			keyPath := certService.KeyPath(user)
+			caCertPath := certService.CaPath()
 
 			// If curl flag is set, print the curl command and return
 			if c.Bool("curl") {
@@ -74,7 +77,7 @@ func QCommand() *cli.Command {
 			p := controller.SQLQueryRequest{
 				Query: string(query),
 			}
-			return sendAndPrint(url, server, user, p)
+			return sendAndPrint(url, user, p)
 		},
 	}
 }

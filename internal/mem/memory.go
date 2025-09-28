@@ -1,3 +1,7 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 package mem
 
 import (
@@ -57,11 +61,11 @@ func (m *MemNode) makeCertsVolume() {
 	c, err := cert.Cert()
 	logger.FatalIfErr("Create cert service", err)
 
-	container.Vol(m.Tenant, c.CaCertPublic(), m.certVolName(),
+	container.Vol(m.Tenant, c.Ca(), m.certVolName(),
 		"/etc/certs", "mem-ca-cert.pem", container.AppNetworkName())
-	container.Vol(m.Tenant, c.FunctionCert(m.memContainerName()), m.certVolName(),
+	container.Vol(m.Tenant, c.ContainerCert(m.memContainerName()), m.certVolName(),
 		"/etc/certs", "mem-server-cert.pem", container.AppNetworkName())
-	container.Vol(m.Tenant, c.FunctionKey(m.memContainerName()), m.certVolName(),
+	container.Vol(m.Tenant, c.ContainerKey(m.memContainerName()), m.certVolName(),
 		"/etc/certs", "mem-server-key.pem", container.AppNetworkName())
 }
 

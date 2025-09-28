@@ -1,8 +1,13 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 package utils
 
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -84,19 +89,25 @@ func NodeType() string {
 	return parts[0]
 }
 
-func NodeSuffix() string {
-	host := HostName()
+func nodeSuffix(host, domain string) string {
 	var b string
 	var ok bool
-	if b, ok = strings.CutSuffix(host, "."+DomainName()); !ok {
+	if b, ok = strings.CutSuffix(host, "."+domain); !ok {
 		return ""
 	}
-	if !strings.Contains(b, "-") {
-		return b
+	a := regexp.MustCompile(`-[a-z](-\d+)?$`).FindString(b)
+	if a == "" {
+		return ""
 	}
-	parts := strings.Split(b, "-")
-	result := strings.Join(parts[1:], "-")
-	return result
+	return a[1:]
+}
+
+func NodeSuffix() string {
+	s := nodeSuffix(HostName(), DomainName())
+	if s == "" {
+		logger.FatalIfErr("Parse node suffix from hostname", fmt.Errorf("invalid hostname format"))
+	}
+	return s
 }
 
 func TenantName() string {
@@ -116,4 +127,23 @@ func NetworkName() string {
 
 func IsHostNetwork() bool {
 	return NetworkName() == hostNetworkName
+}
+
+func ContainerCertName(containerName string) string {
+	if DomainName() == myZygoteDomain {
+		return containerName
+	}
+	domain := DomainName()
+	name := fmt.Sprintf("%s.%s", containerName, domain)
+	return name
+}
+
+func ContainerName(name string) string {
+	if DomainName() == myZygoteDomain {
+		logger.Info("Using container name as cert name for my.zygote.run", M{"container": name})
+		return name
+	}
+	tenant := TenantName()
+	suffix := NodeSuffix()
+	return fmt.Sprintf("%s-%s-%s", tenant, name, suffix)
 }

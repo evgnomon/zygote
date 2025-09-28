@@ -1,3 +1,7 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 package utils
 
 import (
@@ -15,6 +19,7 @@ import (
 func NewLogger() Logger {
 	var logger zerolog.Logger
 	logLevelEnv := strings.ToLower(os.Getenv("Z_LOG_LEVEL"))
+	noColor := os.Getenv("Z_NO_COLOR") == "1"
 
 	// Default log level
 	var level = zerolog.InfoLevel
@@ -44,7 +49,7 @@ func NewLogger() Logger {
 		logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
 	} else {
 		// Text output for non-daemon mode (human-readable)
-		logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout}).With().Timestamp().Logger()
+		logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, NoColor: noColor}).With().Timestamp().Logger()
 	}
 
 	return &zerologLogger{logger: logger}

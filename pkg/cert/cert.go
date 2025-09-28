@@ -1,3 +1,7 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 package cert
 
 import (
@@ -53,7 +57,7 @@ func Cert() (*CertService, error) {
 	return &cs, nil
 }
 
-func (c *CertService) CaCertDir() string {
+func (c *CertService) CaDir() string {
 	p := filepath.Join(c.ConfigHome, "certs", "ca")
 	if _, err := os.Stat(p); os.IsNotExist(err) {
 		err = os.MkdirAll(p, certDirPermission)
@@ -65,53 +69,44 @@ func (c *CertService) CaCertDir() string {
 }
 
 // Get ca cert file path
-func (c *CertService) CaCertFile() string {
-	return filepath.Join(c.CaCertDir(), "ca_cert.pem")
+func (c *CertService) CaPath() string {
+	return filepath.Join(c.CaDir(), "ca_cert.pem")
 }
 
-func (c *CertService) FunctionCert(name string) string {
-	logger.Info("Get function cert", utils.M{"name": name})
-	f := c.FunctionCertFileByContainer(name)
-	c.EnsureFunctionCert(name)
+func (c *CertService) Cert(name string) string {
+	logger.Info("Get cert", utils.M{"name": name})
+	f := c.CertPath(name)
+	c.ensureCert(name)
 	a, err := os.ReadFile(f)
 	logger.FatalIfErr("Read function cert file", err, utils.M{"file": f})
 	return string(a)
 }
 
-func (c *CertService) EnsureFunctionCert(name string) {
-	f := c.FunctionCertFileByContainer(name)
-	if _, err := os.Stat(f); os.IsNotExist(err) {
-		logger.Info("Ensure function cert", utils.M{"name": name})
-		err := c.Sign([]string{ContainerCertName(name)}, []string{"127.0.0.1"}, time.Now().AddDate(1, 0, 0), "")
-		logger.FatalIfErr("Auto generate function cert", err, utils.M{"file": f})
-	}
-}
-
-func (c *CertService) FunctionKey(name string) string {
-	c.EnsureFunctionCert(name)
-	f := c.FunctionKeyFileByContainer(name)
+func (c *CertService) Key(name string) string {
+	c.ensureCert(name)
+	f := c.KeyPath(name)
 	a, err := os.ReadFile(f)
 	logger.FatalIfErr("Read function key file", err, utils.M{"file": f})
 	return string(a)
 }
 
+func (c *CertService) ensureCert(name string) {
+	f := c.CertPath(name)
+	if _, err := os.Stat(f); os.IsNotExist(err) {
+		logger.Info("Ensure function cert", utils.M{"name": name})
+		err := c.Sign([]string{name}, []string{"127.0.0.1"}, time.Now().AddDate(1, 0, 0), "")
+		logger.FatalIfErr("Auto generate function cert", err, utils.M{"file": f})
+	}
+}
+
 // Get ca cert file path
-func (c *CertService) CaCertPublic() string {
-	a, err := os.ReadFile(c.CaCertFile())
+func (c *CertService) Ca() string {
+	a, err := os.ReadFile(c.CaPath())
 	logger.FatalIfErr("Read CA cert file", err)
 	return string(a)
 }
 
-// Get ca cert file path
-func (c *CertService) CaCertPathForDomain(domain string) string {
-	f := filepath.Join(c.CaCertDir(), fmt.Sprintf("%s.pem", domain))
-	if _, err := os.Stat(f); os.IsNotExist(err) {
-		return c.CaCertFile()
-	}
-	return f
-}
-
-func (c *CertService) FunctionsCertDir(name string) string {
+func (c *CertService) CertDir(name string) string {
 	p := filepath.Join(c.ConfigHome, "certs", "functions", name)
 	if _, err := os.Stat(p); os.IsNotExist(err) {
 		err = os.MkdirAll(p, certDirPermission)
@@ -122,71 +117,16 @@ func (c *CertService) FunctionsCertDir(name string) string {
 	return p
 }
 
-func ContainerCertName(containerName string) string {
-	if utils.DomainName() == "my.zygote.run" {
-		logger.Info("Using container name as cert name for my.zygote.run", utils.M{"container": containerName})
-		return containerName
-	}
-	domain := utils.DomainName()
-	node_type := utils.NodeType()
-	suffix := utils.NodeSuffix()
-	if suffix == "" {
-		if node_type == "" {
-			return containerName + "." + domain
-		}
-		return fmt.Sprintf("%s-%s.%s", node_type, containerName, domain)
-	}
-	name := fmt.Sprintf("%s-%s-%s.%s", node_type, containerName, suffix, domain)
-	return name
+func (c *CertService) CertPath(name string) string {
+	return filepath.Join(c.CertDir(name), fmt.Sprintf("%s_cert.pem", name))
 }
 
-func (c *CertService) FunctionCertFileByContainer(containerName string) string {
-	logger.Info("Get function cert by container", utils.M{"container": containerName})
-	return c.FunctionCertPath(ContainerCertName(containerName))
+func (c *CertService) KeyPath(name string) string {
+	return filepath.Join(c.CertDir(name), fmt.Sprintf("%s_key.pem", name))
 }
 
-func (c *CertService) FunctionCertFileByHost() string {
-	domain := utils.DomainName()
-	node_type := utils.NodeType()
-	suffix := utils.NodeSuffix()
-	if suffix == "" {
-		if node_type == "" {
-			return c.FunctionCertPath(domain)
-		}
-		return c.FunctionCertPath(node_type + "." + domain)
-	}
-	name := fmt.Sprintf("%s-%s.%s", node_type, suffix, domain)
-	return c.FunctionCertPath(name)
-}
-
-func (c *CertService) FunctionCertPath(name string) string {
-	return filepath.Join(c.FunctionsCertDir(name), fmt.Sprintf("%s_cert.pem", name))
-}
-
-func (c *CertService) FunctionKeyFileByContainer(containerName string) string {
-	return c.FunctionKeyPath(ContainerCertName(containerName))
-}
-
-func (c *CertService) FunctionKeyFileByHost() string {
-	domain := utils.DomainName()
-	node_type := utils.NodeType()
-	suffix := utils.NodeSuffix()
-	if suffix == "" {
-		if node_type == "" {
-			return c.FunctionKeyPath(domain)
-		}
-		return c.FunctionKeyPath(node_type + "." + domain)
-	}
-	name := fmt.Sprintf("%s-%s.%s", node_type, suffix, domain)
-	return c.FunctionKeyPath(name)
-}
-
-func (c *CertService) FunctionKeyPath(name string) string {
-	return filepath.Join(c.FunctionsCertDir(name), fmt.Sprintf("%s_key.pem", name))
-}
-
-func (c *CertService) MakeRootCert(expiresAt time.Time) error {
-	perFilePath := filepath.Join(c.CaCertDir(), "ca_key.pem")
+func (c *CertService) MakeCaCert(expiresAt time.Time) error {
+	perFilePath := filepath.Join(c.CaDir(), "ca_key.pem")
 	certExist := utils.PathExists(perFilePath)
 	if certExist {
 		logger.Info("Root cert already exists, skipping generation")
@@ -218,7 +158,7 @@ func (c *CertService) MakeRootCert(expiresAt time.Time) error {
 		return err
 	}
 
-	caCertOut, err := os.Create(c.CaCertFile())
+	caCertOut, err := os.Create(c.CaPath())
 
 	if err != nil {
 		return err
@@ -246,9 +186,9 @@ func (c *CertService) MakeRootCert(expiresAt time.Time) error {
 	return nil
 }
 
-func (c *CertService) Sign(domainName, ipAddresses []string, expiresAt time.Time, password string) error {
-	logger.Info("Signing certificate", utils.M{"domain": domainName, "ip": ipAddresses})
-	caKeyPEM, err := os.ReadFile(filepath.Join(c.CaCertDir(), "ca_key.pem"))
+func (c *CertService) Sign(domain, ipAddresses []string, expiresAt time.Time, password string) error {
+	logger.Info("Signing certificate", utils.M{"domain": domain, "ip": ipAddresses})
+	caKeyPEM, err := os.ReadFile(filepath.Join(c.CaDir(), "ca_key.pem"))
 	if err != nil {
 		return err
 	}
@@ -258,7 +198,7 @@ func (c *CertService) Sign(domainName, ipAddresses []string, expiresAt time.Time
 		return err
 	}
 
-	caCertPEM, err := os.ReadFile(filepath.Join(c.CaCertDir(), "ca_cert.pem"))
+	caCertPEM, err := os.ReadFile(filepath.Join(c.CaDir(), "ca_cert.pem"))
 	if err != nil {
 		return err
 	}
@@ -289,13 +229,13 @@ func (c *CertService) Sign(domainName, ipAddresses []string, expiresAt time.Time
 	serverTemplate := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			CommonName: domainName[0],
+			CommonName: domain[0],
 		},
 		NotBefore:   time.Now(),
 		NotAfter:    expiresAt,
 		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageCodeSigning},
-		DNSNames:    domainName,
+		DNSNames:    domain,
 		IPAddresses: ips,
 	}
 
@@ -304,7 +244,7 @@ func (c *CertService) Sign(domainName, ipAddresses []string, expiresAt time.Time
 		return err
 	}
 
-	pubFilePath := filepath.Join(c.FunctionsCertDir(domainName[0]), fmt.Sprintf("%s_cert.pem", domainName[0]))
+	pubFilePath := filepath.Join(c.CertDir(domain[0]), fmt.Sprintf("%s_cert.pem", domain[0]))
 	serverCertOut, err := os.Create(pubFilePath)
 	if err != nil {
 		return err
@@ -314,7 +254,7 @@ func (c *CertService) Sign(domainName, ipAddresses []string, expiresAt time.Time
 		return err
 	}
 	serverCertOut.Close()
-	keyFilePath := filepath.Join(c.FunctionsCertDir(domainName[0]), fmt.Sprintf("%s_key.pem", domainName[0]))
+	keyFilePath := filepath.Join(c.CertDir(domain[0]), fmt.Sprintf("%s_key.pem", domain[0]))
 
 	serverKeyOut, err := os.Create(keyFilePath)
 	if err != nil {
@@ -330,7 +270,7 @@ func (c *CertService) Sign(domainName, ipAddresses []string, expiresAt time.Time
 	}
 	serverKeyOut.Close()
 
-	p12FilePath := filepath.Join(c.FunctionsCertDir(domainName[0]), fmt.Sprintf("%s.p12", domainName[0]))
+	p12FilePath := filepath.Join(c.CertDir(domain[0]), fmt.Sprintf("%s.p12", domain[0]))
 	if password == "" {
 		err = utils.Run("openssl", "pkcs12", "-export", "-in", pubFilePath, "-inkey", keyFilePath, "-out", p12FilePath, "-passout", "pass:")
 	} else {
@@ -345,19 +285,19 @@ func (c *CertService) Sign(domainName, ipAddresses []string, expiresAt time.Time
 func TLSConfig(name string) *tls.Config {
 	s, err := Cert()
 	logger.FatalIfErr("Create cert service", err, utils.M{"name": name})
-	caCert := s.CaCertPublic()
+	caCert := s.Ca()
 	caCertPool := x509.NewCertPool()
 	if !caCertPool.AppendCertsFromPEM([]byte(caCert)) {
 		logger.Fatal("Failed to append CA certificate", utils.M{"name": name})
 	}
-	s.EnsureFunctionCert(name)
+	s.ensureCert(name)
 	tlsConfig := &tls.Config{
 		RootCAs:    caCertPool,
 		MinVersion: tls.VersionTLS12,
 		Certificates: func() []tls.Certificate {
 			cert, err := tls.LoadX509KeyPair(
-				s.FunctionCertPath(ContainerCertName(name)),
-				s.FunctionKeyPath(ContainerCertName(name)),
+				s.CertPath(name),
+				s.KeyPath(name),
 			)
 			logger.FatalIfErr("Load client certificate", err, utils.M{"name": name})
 			return []tls.Certificate{cert}
@@ -365,4 +305,20 @@ func TLSConfig(name string) *tls.Config {
 	}
 
 	return tlsConfig
+}
+
+func (c *CertService) ContainerCert(name string) string {
+	return c.Cert(utils.ContainerCertName(name))
+}
+
+func (c *CertService) ContainerKey(name string) string {
+	return c.Key(utils.ContainerCertName(name))
+}
+
+func (c *CertService) ContainerCertPath(name string) string {
+	return c.CertPath(utils.ContainerCertName(name))
+}
+
+func (c *CertService) ContainerKeyPath(name string) string {
+	return c.KeyPath(utils.ContainerCertName(name))
 }

@@ -25,6 +25,8 @@
   tags:
     - z_deploy
     - z_join
+    - join
+    - deploy
     - never
 
 - name: Add front
@@ -43,21 +45,8 @@
   tags:
     - z_deploy
     - never
-
-- name: Deploy SQL certificates
-  hosts:
-    - shards
-  gather_facts: false
-  collections:
-    - evgnomon.catamaran
-  roles:
-    - role: z_ca_deploy
-      vars:
-        function_name: "sql"
-  tags:
-    - z_deploy
-    - never
-
+    - join
+    - deploy
 
 - name: Deploy MEM certificates
   hosts:
@@ -68,14 +57,21 @@
   roles:
     - role: z_ca_deploy
       vars:
+        function_name: "sql"
+    - role: z_ca_deploy
+      vars:
         function_name: "mem"
+    - role: z_ca_deploy
+      vars:
+        function_name: "provisioner"
   tags:
     - z_deploy
     - never
 
-- name: Deploy ZCore on shards
+- name: Deploy Zygote services
   hosts:
     - shards
+    - front
   gather_facts: false
   collections:
     - evgnomon.catamaran
@@ -83,46 +79,11 @@
     - role: z_service
       vars:
         z_service_name: "zcore"
-  tags:
-    - z_deploy
-    - never
-
-- name: Deploy ZCore on front
-  hosts:
-    - front
-  gather_facts: false
-  collections:
-    - evgnomon.catamaran
-  roles:
     - role: z_service
       vars:
         z_service_name: "zcore"
         z_use_domain_cert: true
-  tags:
-    - z_deploy
-    - never
-
-- name: Deploy Fluent-bit on front
-  hosts:
-    - front
-    - shards
-  gather_facts: false
-  collections:
-    - evgnomon.catamaran
-  roles:
     - role: ensure_fb
-  tags:
-    - z_deploy
-    - never
-
-- name: Deploy Node Exporter on front
-  hosts:
-    - front
-    - shards
-  gather_facts: false
-  collections:
-    - evgnomon.catamaran
-  roles:
     - role: ensure_node_exporter
   tags:
     - z_deploy

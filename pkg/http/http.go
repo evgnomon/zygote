@@ -1,3 +1,7 @@
+/*
+Copyright (C) 2025- Hamed Ghasemzadeh. All rights reserved.
+License: HGL General License <https://evgnomon.org/docs/hgl>
+*/
 package http
 
 import (
@@ -27,19 +31,19 @@ func NewHTTPTransportConfig() *HTTPTransportConfig {
 	cs, err := cert.Cert()
 	logger.FatalIfErr("Create cert service", err)
 	return &HTTPTransportConfig{
-		caCertFile:   cs.CaCertFile(),
-		funcCertFile: cs.FunctionCertPath(utils.User()),
-		funcKeyFile:  cs.FunctionKeyPath(utils.User()),
+		caCertFile:   cs.CaPath(),
+		funcCertFile: cs.CertPath(utils.User()),
+		funcKeyFile:  cs.KeyPath(utils.User()),
 	}
 }
 
-func NewHTTPTransportConfigForUserHost(userName, domain string) *HTTPTransportConfig {
+func NewHTTPTransportConfigForUser(userName string) *HTTPTransportConfig {
 	cs, err := cert.Cert()
 	logger.FatalIfErr("Create cert service", err)
 	return &HTTPTransportConfig{
-		caCertFile:   cs.CaCertPathForDomain(domain),
-		funcCertFile: cs.FunctionCertPath(userName),
-		funcKeyFile:  cs.FunctionKeyPath(userName),
+		caCertFile:   cs.CaPath(),
+		funcCertFile: cs.CertPath(userName),
+		funcKeyFile:  cs.KeyPath(userName),
 	}
 }
 
