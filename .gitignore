@@ -5,3 +5,6 @@
 /inventory
 /.config
 /.vscode
+
+*.tar.gz
+.pg.json

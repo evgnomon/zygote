@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  sogo:
+    image: docker.io/sogomail/sogo:latest
+    container_name: sogo
+    restart: unless-stopped
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_DATABASE: sogo
+      MYSQL_USER: sogo
+      MYSQL_PASSWORD: changeme
+    ports:
+      - "127.0.0.1:${PORT:-20000}:80"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      memcached:
+        condition: service_started
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/sogo_config:/etc/sogo
+    networks:
+      - ${TENANT}_${POD}_sogo_net
+
+  mysql:
+    image: docker.io/mariadb:11
+    container_name: sogo_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: sogo
+      MYSQL_USER: sogo
+      MYSQL_PASSWORD: changeme
+      MYSQL_ROOT_PASSWORD: changeme
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - ${TENANT}_${POD}_sogo_net
+
+  memcached:
+    image: docker.io/memcached:latest
+    container_name: sogo_memcached
+    restart: unless-stopped
+    networks:
+      - ${TENANT}_${POD}_sogo_net
+
+networks:
+  ${TENANT}_${POD}_sogo_net:
+    driver: bridge

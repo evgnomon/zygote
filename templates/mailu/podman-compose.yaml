@@ -1,0 +1,107 @@
+version: "3.9"
+
+services:
+  front:
+    image: ghcr.io/mailu/nginx:latest
+    container_name: mailu_front
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+      LOG_LEVEL: WARNING
+    ports:
+      - "127.0.0.1:${PORT:-8090}:80"
+      - "127.0.0.1:8443:443"
+      - "127.0.0.1:25:25"
+      - "127.0.0.1:465:465"
+      - "127.0.0.1:587:587"
+      - "127.0.0.1:143:143"
+      - "127.0.0.1:993:993"
+      - "127.0.0.1:110:110"
+      - "127.0.0.1:995:995"
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_certs:/certs
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_overrides/nginx:/overrides:ro
+    depends_on:
+      - admin
+      - imap
+      - smtp
+    networks:
+      - ${TENANT}_${POD}_mailu_net
+
+  admin:
+    image: ghcr.io/mailu/admin:latest
+    container_name: mailu_admin
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+      SECRET_KEY: changeme_generate_a_real_secret
+      DOMAIN: ${DOMAIN}
+      HOSTNAMES: ${DOMAIN}
+      POSTMASTER: admin
+      AUTH_RATELIMIT_IP: 60/hour
+      INITIAL_ADMIN_ACCOUNT: admin
+      INITIAL_ADMIN_DOMAIN: ${DOMAIN}
+      INITIAL_ADMIN_PW: changeme
+      SUBNET: 172.28.0.0/16
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_data:/data
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_dkim:/dkim
+    depends_on:
+      - redis
+    networks:
+      - ${TENANT}_${POD}_mailu_net
+
+  imap:
+    image: ghcr.io/mailu/dovecot:latest
+    container_name: mailu_imap
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_mail:/mail
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_overrides/dovecot:/overrides:ro
+    depends_on:
+      - admin
+    networks:
+      - ${TENANT}_${POD}_mailu_net
+
+  smtp:
+    image: ghcr.io/mailu/postfix:latest
+    container_name: mailu_smtp
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_mailqueue:/queue
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_overrides/postfix:/overrides:ro
+    depends_on:
+      - admin
+    networks:
+      - ${TENANT}_${POD}_mailu_net
+
+  antispam:
+    image: ghcr.io/mailu/rspamd:latest
+    container_name: mailu_antispam
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_filter:/var/lib/rspamd
+      - /mnt/z/volumes/${TENANT}/${POD}/mailu_overrides/rspamd:/overrides:ro
+    depends_on:
+      - admin
+    networks:
+      - ${TENANT}_${POD}_mailu_net
+
+  redis:
+    image: docker.io/redis:7
+    container_name: mailu_redis
+    restart: unless-stopped
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/redis_data:/data
+    networks:
+      - ${TENANT}_${POD}_mailu_net
+
+networks:
+  ${TENANT}_${POD}_mailu_net:
+    driver: bridge

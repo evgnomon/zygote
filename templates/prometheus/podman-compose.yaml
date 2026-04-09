@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  prometheus:
+    image: docker.io/prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORT:-9090}:9090"
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/prometheus_data:/prometheus
+    networks:
+      - ${TENANT}_${POD}_prometheus_net
+
+networks:
+  ${TENANT}_${POD}_prometheus_net:
+    driver: bridge

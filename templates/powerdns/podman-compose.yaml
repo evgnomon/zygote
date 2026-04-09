@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  powerdns:
+    image: docker.io/powerdns/pdns-auth-49:latest
+    container_name: powerdns
+    restart: unless-stopped
+    environment:
+      PDNS_AUTH_API_KEY: changeme
+    ports:
+      - "127.0.0.1:${PORT:-8081}:8081"
+      - "127.0.0.1:5300:53/tcp"
+      - "127.0.0.1:5300:53/udp"
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/powerdns_data:/var/lib/powerdns
+    networks:
+      - ${TENANT}_${POD}_powerdns_net
+
+networks:
+  ${TENANT}_${POD}_powerdns_net:
+    driver: bridge

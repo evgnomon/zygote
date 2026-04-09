@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  openldap:
+    image: docker.io/osixia/openldap:latest
+    container_name: openldap
+    restart: unless-stopped
+    environment:
+      LDAP_ORGANISATION: PlatForge
+      LDAP_DOMAIN: ${DOMAIN}
+      LDAP_ADMIN_PASSWORD: changeme
+    ports:
+      - "127.0.0.1:${PORT:-389}:389"
+      - "127.0.0.1:636:636"
+    volumes:
+      - /mnt/z/volumes/${TENANT}/${POD}/openldap_data:/var/lib/ldap
+      - /mnt/z/volumes/${TENANT}/${POD}/openldap_config:/etc/ldap/slapd.d
+    networks:
+      - ${TENANT}_${POD}_openldap_net
+
+networks:
+  ${TENANT}_${POD}_openldap_net:
+    driver: bridge
