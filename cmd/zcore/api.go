@@ -5,10 +5,10 @@ License: HGL General License <https://evgnomon.org/docs/hgl>
 package main
 
 import (
-	"github.com/evgnomon/zygote/internal/controller"
-	"github.com/evgnomon/zygote/internal/server"
-	"github.com/evgnomon/zygote/pkg/http"
-	"github.com/evgnomon/zygote/pkg/utils"
+	"github.com/evgnomon/zygote/lib/cluster/controller"
+	"github.com/evgnomon/zygote/lib/cluster/server"
+	"github.com/evgnomon/zygote/lib/cluster/http"
+	"github.com/evgnomon/zygote/lib/cluster/utils"
 )
 
 var logger = utils.NewLogger()

@@ -7,8 +7,8 @@ package main
 import (
 	"os"
 
-	"github.com/evgnomon/zygote/internal/commands"
-	"github.com/evgnomon/zygote/pkg/utils"
+	"github.com/evgnomon/zygote/lib/cluster/commands"
+	"github.com/evgnomon/zygote/lib/cluster/utils"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	cli "github.com/urfave/cli/v2"
 )

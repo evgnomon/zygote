@@ -5,6 +5,8 @@
 /inventory
 /.config
 /.vscode
+build/
+.stamps/
 
 *.tar.gz
 .pg.json
