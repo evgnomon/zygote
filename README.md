@@ -1,7 +1,7 @@
 # Introduction
 
-> No task that you do before asking AI. This is AI first.
+> No task that you do before asking using and/or developing AI. Using and/or developing AI is also a task that we use and/or develop AI for. We already have everything for this, except Zygote!
 
-Creating an MCP backend should be easy! I just name it and get it up an running out of a Git repo with a CI/CD configured. Then iterate to get the desired result by making a pull request. I should see my function deployed after merging with the main branch. This platform is Zygote and you can either use it as a service in [Zygote .Run](https://zygote.run) or host it yourself.
+In simple terms, every task you do should start by using or developing AI. Even the task of building AI itself follows this rule. We already have all the pieces to make this happen — Zygote is the missing link that ties them together.
 
-Zygote's kernel named `zcore` and runs over a set of nodes which is owned by you. Each node provides capabilities to the cluster. Use `z` as command line interface (CLI) to interact with the cluster.
+We use and/or develop Zygote based on usecode.dev guidelines.
