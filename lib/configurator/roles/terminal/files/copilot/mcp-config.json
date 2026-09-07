@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "usecode-agent-bot": {
+    "usecode": {
       "tools": [
         "*"
       ],

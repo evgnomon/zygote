@@ -19,7 +19,7 @@
     }
   },
   "mcp": {
-    "usecode-agent-bot": {
+    "usecode": {
       "type": "local",
       "command": [
         "uv",

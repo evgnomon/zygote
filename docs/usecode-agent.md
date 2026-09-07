@@ -36,7 +36,7 @@ cd lib/bot && uv sync && uv run usecode-agent-bot   # starts an MCP server over 
 Add it to Claude Code:
 
 ```sh
-claude mcp add usecode-agent-bot -- uv run --directory /path/to/usecode/lib/bot usecode-agent-bot
+claude mcp add usecode -- uv run --directory /path/to/usecode/lib/bot usecode-agent-bot
 ```
 
 See `lib/bot/README.md` for configuration and the full tool list.

@@ -73,13 +73,13 @@ Copy `.env.example` to `.env` and adjust as needed.
 ## Add to Claude Code
 
 ```sh
-claude mcp add usecode-agent-bot -- uv run --directory /path/to/usecode/lib/bot usecode-agent-bot
+claude mcp add usecode -- uv run --directory /path/to/usecode/lib/bot usecode-agent-bot
 ```
 
 Pass config as env vars with `-e` if not using `.env`, e.g. to point at a non-default API:
 
 ```sh
-claude mcp add usecode-agent-bot \
+claude mcp add usecode \
   -e USECODE_AGENT_BOT_API_BASE_URL=http://localhost:8000 \
   -- uv run --directory /path/to/usecode/lib/bot usecode-agent-bot
 ```
@@ -108,26 +108,26 @@ In VS Code, Copilot Chat's agent mode picks up MCP servers from a workspace `.vs
 ```
 
 (`env` is optional — omit it and use `.env` instead if you prefer.) VS Code shows a `Start`
-codelens above the `usecode-agent-bot` entry; click it, or run **MCP: List Servers** from the Command
+codelens above the `usecode` entry; click it, or run **MCP: List Servers** from the Command
 Palette and start it from there. Restart/reload the server the same way after editing this repo's
 code, same as the Claude Code workflow below.
 
 For the [Copilot CLI](https://docs.github.com/copilot/how-tos/copilot-cli) (`copilot`):
 
 ```sh
-copilot mcp add usecode-agent-bot -- uv run --directory /path/to/usecode/lib/bot usecode-agent-bot
+copilot mcp add usecode -- uv run --directory /path/to/usecode/lib/bot usecode-agent-bot
 ```
 
 Add env vars with `--env` if not using `.env`:
 
 ```sh
-copilot mcp add usecode-agent-bot \
+copilot mcp add usecode \
   --env USECODE_AGENT_BOT_API_BASE_URL=http://localhost:8000 \
   -- uv run --directory /path/to/usecode/lib/bot usecode-agent-bot
 ```
 
 This writes to `~/.copilot/mcp-config.json` (user scope, available in every session). Verify with
-`copilot mcp list` / `copilot mcp get usecode-agent-bot`. To remove it: `copilot mcp remove usecode-agent-bot`.
+`copilot mcp list` / `copilot mcp get usecode`. To remove it: `copilot mcp remove usecode`.
 
 ### Other MCP clients
 
@@ -136,7 +136,7 @@ For clients that read raw JSON config (e.g. `mcpServers` in a config file):
 ```json
 {
   "mcpServers": {
-    "usecode-agent-bot": {
+    "usecode": {
       "command": "uv",
       "args": ["run", "--directory", "/path/to/usecode/lib/bot", "usecode-agent-bot"]
     }
@@ -175,12 +175,12 @@ print(asyncio.run(usecode_agent_health()))
 
 ### Try changes through Claude Code
 
-Since `usecode-agent-bot` is registered to run via `uv run --directory .../lib/bot usecode-agent-bot`, edits
+Since `usecode` is registered to run via `uv run --directory .../lib/bot usecode-agent-bot`, edits
 to the source take effect on the next process start — no reinstall needed. After editing:
 
-- Run `/mcp` in Claude Code and reconnect `usecode-agent-bot`, or restart the session, to pick up the
+- Run `/mcp` in Claude Code and reconnect `usecode`, or restart the session, to pick up the
   change.
-- In VS Code Copilot Chat, use the `Restart` codelens above the `usecode-agent-bot` entry in
+- In VS Code Copilot Chat, use the `Restart` codelens above the `usecode` entry in
   `.vscode/mcp.json` (or **MCP: List Servers** → restart from the Command Palette).
 - In the Copilot CLI, start a new session (`copilot`); it spawns the server process fresh each
   session, so there's no separate restart step.
