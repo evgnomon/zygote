@@ -17,8 +17,14 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
+#
+# `disable_existing_loggers=False` is load-bearing: migrations run inside the
+# API process (app.py's lifespan), by which point uvicorn has already created
+# `uvicorn.error`. fileConfig's default would disable it, so a startup failure
+# after this point — including the "Application startup failed" traceback —
+# would be swallowed and the container would just crash-loop in silence.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # app.py migrates each database instance in turn and sets this option to the
 # instance it is currently upgrading; running alembic directly leaves it at
