@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="USECODE_AGENT_BOT_", env_file=".env", extra="ignore"
+        env_prefix="USECODE_MCP_", env_file=".env", extra="ignore"
     )
 
     # The Caddy load balancers in front of usecode-agent-api, each routing /api/*
@@ -21,7 +21,7 @@ class Settings(BaseSettings):
         "https://localhost:4431/api",
     ]
 
-    # Single-endpoint override. Set USECODE_AGENT_BOT_API_BASE_URL to talk to one
+    # Single-endpoint override. Set USECODE_MCP_API_BASE_URL to talk to one
     # specific address (a remote deployment, or a bare usecode-agent-api with no
     # Caddy in front) — it replaces the list above rather than adding to it,
     # so the bot then has exactly the one endpoint asked for.

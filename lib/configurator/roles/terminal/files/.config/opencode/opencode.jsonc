@@ -26,10 +26,10 @@
         "run",
         "--directory",
         "{env:HOME}/src/github.com/evgnomon/usecode/lib/bot",
-        "usecode-agent-bot"
+        "usecode-mcp"
       ],
       "environment": {
-        "USECODE_AGENT_BOT_API_BASE_URL": "https://localhost:4430/api"
+        "USECODE_MCP_API_BASE_URL": "https://localhost:4430/api"
       },
       "enabled": true
     }

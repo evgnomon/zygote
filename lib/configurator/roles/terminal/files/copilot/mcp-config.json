@@ -10,7 +10,7 @@
         "run",
         "--directory",
         "$HOME/src/github.com/evgnomon/usecode/lib/bot",
-        "usecode-agent-bot"
+        "usecode-mcp"
       ]
     }
   }

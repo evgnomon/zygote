@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .config import Settings
 
-# lib/bot/src/usecode_agent_bot/compose.py -> repo root
+# lib/bot/src/usecode_mcp/compose.py -> repo root
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 
 

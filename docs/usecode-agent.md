@@ -30,13 +30,13 @@ See `lib/app/README.md`, `lib/api/README.md`, and `lib/bot/README.md` for detail
 logout) against a running `lib/api` instance.
 
 ```sh
-cd lib/bot && uv sync && uv run usecode-agent-bot   # starts an MCP server over stdio
+cd lib/bot && uv sync && uv run usecode-mcp   # starts an MCP server over stdio
 ```
 
 Add it to Claude Code:
 
 ```sh
-claude mcp add usecode -- uv run --directory /path/to/usecode/lib/bot usecode-agent-bot
+claude mcp add usecode -- uv run --directory /path/to/usecode/lib/bot usecode-mcp
 ```
 
 See `lib/bot/README.md` for configuration and the full tool list.

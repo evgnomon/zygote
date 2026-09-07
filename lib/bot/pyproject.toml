@@ -1,5 +1,5 @@
 [project]
-name = "usecode-agent-bot"
+name = "usecode-mcp"
 version = "0.1.0"
 description = "MCP server for operating usecode agent"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-usecode-agent-bot = "usecode_agent_bot:main"
+usecode-mcp = "usecode_mcp:main"
 
 [build-system]
 requires = ["uv_build>=0.9.7,<0.10.0"]
